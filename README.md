@@ -7,7 +7,7 @@
 ---
 
 <p align="center">
-  <img src="media/threatlens-demo.svg" alt="ThreatLens live demo preview" width="840" />
+  <img src="media/threatlens-demo.svg" alt="ThreatLens dashboard preview" width="840" />
 </p>
 
 **[▶ Open ThreatLens Live Demo](https://threatlens-1uk.pages.dev/)**
