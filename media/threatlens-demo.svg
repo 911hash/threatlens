@@ -1,179 +1,120 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
-  <title id="title">ThreatLens live dashboard preview</title>
-  <desc id="desc">Animated dashboard showing suspicious domain analysis with live score, alerts, and verdict drift tracking.</desc>
+  <title id="title">ThreatLens dashboard preview</title>
+  <desc id="desc">A static dashboard showing a detected malicious domain with risk score, verdict drift chart, evidence group bars, and alert panel.</desc>
 
   <defs>
     <linearGradient id="bg" x1="0" x2="1">
-      <stop offset="0%" stop-color="#081521"/>
-      <stop offset="100%" stop-color="#0f2438"/>
+      <stop offset="0%" stop-color="#061922"/>
+      <stop offset="100%" stop-color="#0b2737"/>
     </linearGradient>
     <linearGradient id="panel" x1="0" x2="1">
-      <stop offset="0%" stop-color="#0a1b2a" stop-opacity="0.95"/>
-      <stop offset="100%" stop-color="#122b3d" stop-opacity="0.9"/>
+      <stop offset="0%" stop-color="#0d1f2d"/>
+      <stop offset="100%" stop-color="#122d3f"/>
     </linearGradient>
     <linearGradient id="scoreGlow" x1="0" x2="1">
-      <stop offset="0%" stop-color="#ffd369"/>
-      <stop offset="100%" stop-color="#ff7a59"/>
+      <stop offset="0%" stop-color="#ffd166"/>
+      <stop offset="100%" stop-color="#ff8a3d"/>
     </linearGradient>
-    <filter id="softGlow">
-      <feGaussianBlur stdDeviation="6" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.45"/>
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#000000" flood-opacity="0.38"/>
     </filter>
-    <style><![CDATA[
-      .label { font: 600 18px 'Segoe UI', Arial, sans-serif; fill: #d9ecff; letter-spacing: 1.5px; }
-      .small { font: 600 12px 'Segoe UI', Arial, sans-serif; fill: #9ec0d6; letter-spacing: 1.5px; }
-      .mono { font: 700 24px 'Segoe UI', Arial, sans-serif; fill: #ebf7ff; }
-      .body { font: 600 18px 'Segoe UI', Arial, sans-serif; fill: #dfeefc; }
-      .muted { fill: #8aaec6; }
-      .good { fill: #7fffd4; }
-      .warn { fill: #ffd166; }
-      .danger { fill: #ff6b6b; }
-      .line { stroke: #7bc4ff; stroke-width: 2.5; fill: none; opacity: 0.9; }
-      .grid { stroke: #254b65; stroke-width: 1; opacity: 0.8; }
-      .bar { fill: #1fb6ff; opacity: 0.88; }
-      .bar2 { fill: #ff9f43; opacity: 0.9; }
-      .bar3 { fill: #6de0b4; opacity: 0.9; }
-      .pulse { animation: pulse 2.2s ease-in-out infinite; transform-origin: center; }
-      @keyframes pulse {
-        0%, 100% { opacity: 0.6; transform: scale(1); }
-        50% { opacity: 1; transform: scale(1.05); }
-      }
-      @keyframes blink {
-        0%, 100% { opacity: 0.45; }
-        50% { opacity: 1; }
-      }
-      @keyframes scan {
-        0% { transform: translateY(-18px); opacity: 0; }
-        22% { opacity: 1; }
-        100% { transform: translateY(32px); opacity: 0; }
-      }
-      .scanline { animation: scan 2.8s ease-in-out infinite; }
-      .blink { animation: blink 1.4s ease-in-out infinite; }
-      .floaty { animation: floaty 4s ease-in-out infinite; }
-      @keyframes floaty {
-        0%, 100% { transform: translateY(0px); }
-        50% { transform: translateY(-6px); }
-      }
-    ]]></style>
   </defs>
 
   <rect width="1400" height="820" fill="url(#bg)"/>
-  <g opacity="0.3">
-    <path d="M0 120H1400M0 220H1400M0 320H1400M0 420H1400M0 520H1400M0 620H1400M0 720H1400" class="grid"/>
-    <path d="M220 0V820M420 0V820M620 0V820M820 0V820M1020 0V820M1220 0V820" class="grid"/>
+  <g opacity="0.2">
+    <path d="M0 120H1400M0 220H1400M0 320H1400M0 420H1400M0 520H1400M0 620H1400M0 720H1400" stroke="#274d66" stroke-width="1"/>
+    <path d="M220 0V820M420 0V820M620 0V820M820 0V820M1020 0V820M1220 0V820" stroke="#274d66" stroke-width="1"/>
   </g>
 
   <g filter="url(#shadow)">
-    <rect x="80" y="70" width="1240" height="680" rx="28" fill="url(#panel)" stroke="#2d5470" stroke-width="1.4"/>
+    <rect x="80" y="70" width="1240" height="680" rx="28" fill="url(#panel)" stroke="#2f5a75" stroke-width="2"/>
   </g>
 
   <g>
-    <rect x="115" y="95" width="180" height="36" rx="18" fill="#0f2f46" stroke="#3c7fa8"/>
-    <text x="145" y="118" class="label">THREATLENS</text>
-    <g class="blink" style="transform-origin: 1040px 110px;">
-      <rect x="1040" y="100" width="92" height="32" rx="16" fill="#ff5d5d" opacity="0.18"/>
-      <circle cx="1065" cy="116" r="6" fill="#ff6b6b"/>
-      <text x="1080" y="122" class="small" style="fill:#ffc6c6; letter-spacing:2px;">LIVE</text>
-    </g>
+    <rect x="115" y="95" width="180" height="36" rx="18" fill="#0d2d3e" stroke="#3c7190"/>
+    <text x="145" y="119" fill="#dfeefc" font-size="18" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="1.5">THREATLENS</text>
   </g>
 
   <g>
-    <rect x="115" y="150" width="350" height="190" rx="20" fill="#0b2133" stroke="#2d526d"/>
-    <text x="142" y="180" class="small">TARGET</text>
-    <text x="142" y="214" class="body">login-bank[.]com</text>
-    <text x="142" y="250" class="small">RISK SCORE</text>
-    <g transform="translate(142 268)">
-      <text x="0" y="0" class="mono" style="font-size:52px; fill:url(#scoreGlow); font-weight:800;">87</text>
-      <text x="76" y="8" class="body" style="fill:#fbd28b;">/100</text>
-    </g>
-    <circle cx="392" cy="294" r="62" fill="none" stroke="#1d3b4f" stroke-width="10"/>
-    <circle cx="392" cy="294" r="62" fill="none" stroke="url(#scoreGlow)" stroke-width="10" stroke-dasharray="290 80" stroke-linecap="round" transform="rotate(-90 392 294)" class="pulse"/>
+    <rect x="1048" y="100" width="92" height="32" rx="16" fill="#ff5d5d" opacity="0.15"/>
+    <circle cx="1068" cy="116" r="6" fill="#ff6b6b"/>
+    <text x="1082" y="122" fill="#ffc6c6" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="2">LIVE</text>
   </g>
 
   <g>
-    <rect x="505" y="150" width="760" height="190" rx="20" fill="#0b2133" stroke="#2d526d"/>
-    <text x="532" y="178" class="small">VERDICT DRIFT</text>
-    <text x="532" y="208" class="body">Score increased by +24 in the last 18 hours</text>
+    <rect x="115" y="150" width="350" height="190" rx="20" fill="#0c2336" stroke="#2f536d"/>
+    <text x="142" y="178" fill="#93b7d1" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="1.5">TARGET</text>
+    <text x="142" y="214" fill="#dfeefc" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">login-bank[.]com</text>
+    <text x="142" y="250" fill="#93b7d1" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="1.5">RISK SCORE</text>
 
-    <g transform="translate(532 230)">
-      <g class="grid">
-        <line x1="0" y1="0" x2="670" y2="0"/>
-        <line x1="0" y1="28" x2="670" y2="28"/>
-        <line x1="0" y1="56" x2="670" y2="56"/>
-        <line x1="0" y1="84" x2="670" y2="84"/>
-      </g>
+    <text x="142" y="308" fill="url(#scoreGlow)" font-size="54" font-weight="800" font-family="Segoe UI, Arial, sans-serif">87</text>
+    <text x="216" y="306" fill="#f4d79d" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">/100</text>
 
-      <path d="M0 64 C70 54, 95 18, 150 42 S240 24, 290 60 S380 80, 420 42 S480 12, 540 20 S610 48, 670 12" class="line" stroke="#6fd3ff" stroke-width="3" fill="none"/>
-      <path d="M0 64 C70 54, 95 18, 150 42 S240 24, 290 60 S380 80, 420 42 S480 12, 540 20 S610 48, 670 12" fill="none" stroke="#6fd3ff" stroke-width="10" opacity="0.12"/>
-      <circle cx="420" cy="42" r="6" fill="#ffb74d"/><circle cx="540" cy="20" r="6" fill="#ffb74d"/>
-      <circle cx="612" cy="38" r="6" fill="#ff6b6b"/>
-    </g>
+    <circle cx="392" cy="294" r="62" fill="none" stroke="#1f4258" stroke-width="10"/>
+    <circle cx="392" cy="294" r="62" fill="none" stroke="url(#scoreGlow)" stroke-width="10" stroke-linecap="round" stroke-dasharray="290 80" transform="rotate(-90 392 294)"/>
   </g>
 
   <g>
-    <rect x="115" y="365" width="460" height="300" rx="20" fill="#0b2133" stroke="#2d526d"/>
-    <text x="142" y="394" class="small">EVIDENCE GROUPS</text>
+    <rect x="505" y="150" width="760" height="190" rx="20" fill="#0c2336" stroke="#2f536d"/>
+    <text x="532" y="178" fill="#93b7d1" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="1.5">VERDICT DRIFT</text>
+    <text x="532" y="208" fill="#dfeefc" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Score increased by +24 in the last 18 hours</text>
+
+    <path d="M532 260 C600 245, 650 210, 696 235 S790 228, 860 260 S980 242, 1048 255 S1150 220, 1260 238" fill="none" stroke="#6bc5ff" stroke-width="3"/>
+    <circle cx="870" cy="260" r="6" fill="#f0b54a"/>
+    <circle cx="1048" cy="255" r="6" fill="#f0b54a"/>
+    <circle cx="1260" cy="238" r="6" fill="#ff6b6b"/>
+  </g>
+
+  <g>
+    <rect x="115" y="365" width="460" height="300" rx="20" fill="#0c2336" stroke="#2f536d"/>
+    <text x="142" y="394" fill="#93b7d1" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="1.5">EVIDENCE GROUPS</text>
 
     <g transform="translate(142 420)">
-      <rect width="350" height="20" rx="10" fill="#112f40"/>
-      <rect width="264" height="20" rx="10" fill="#1fb6ff" class="pulse"/>
-      <text x="365" y="15" class="body" style="fill:#dfeefc;">AV DETECTIONS</text>
+      <rect width="350" height="20" rx="10" fill="#142f40"/>
+      <rect width="264" height="20" rx="10" fill="#1fb6ff"/>
+      <text x="365" y="15" fill="#dfeefc" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">AV DETECTIONS</text>
     </g>
 
     <g transform="translate(142 485)">
-      <rect width="350" height="20" rx="10" fill="#112f40"/>
-      <rect width="183" height="20" rx="10" fill="#ff9f43" class="pulse"/>
-      <text x="365" y="15" class="body" style="fill:#dfeefc;">REPUTATION</text>
+      <rect width="350" height="20" rx="10" fill="#142f40"/>
+      <rect width="183" height="20" rx="10" fill="#ff9f43"/>
+      <text x="365" y="15" fill="#dfeefc" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">REPUTATION</text>
     </g>
 
     <g transform="translate(142 550)">
-      <rect width="350" height="20" rx="10" fill="#112f40"/>
-      <rect width="268" height="20" rx="10" fill="#6de0b4" class="pulse"/>
-      <text x="365" y="15" class="body" style="fill:#dfeefc;">DOMAIN INFRA</text>
+      <rect width="350" height="20" rx="10" fill="#142f40"/>
+      <rect width="268" height="20" rx="10" fill="#64d9c2"/>
+      <text x="365" y="15" fill="#dfeefc" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">DOMAIN INFRA</text>
     </g>
 
     <g transform="translate(142 615)">
-      <rect width="350" height="20" rx="10" fill="#112f40"/>
-      <rect width="212" height="20" rx="10" fill="#ff6b6b" class="pulse"/>
-      <text x="365" y="15" class="body" style="fill:#dfeefc;">BEHAVIOR</text>
+      <rect width="350" height="20" rx="10" fill="#142f40"/>
+      <rect width="212" height="20" rx="10" fill="#ff6b6b"/>
+      <text x="365" y="15" fill="#dfeefc" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">BEHAVIOR</text>
     </g>
   </g>
 
   <g>
-    <rect x="610" y="365" width="655" height="300" rx="20" fill="#0b2133" stroke="#2d526d"/>
-    <text x="638" y="394" class="small">HISTORY / ALERTS</text>
+    <rect x="610" y="365" width="655" height="300" rx="20" fill="#0c2336" stroke="#2f536d"/>
+    <text x="638" y="394" fill="#93b7d1" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" letter-spacing="1.5">HISTORY / ALERTS</text>
 
-    <g transform="translate(638 420)">
-      <rect x="0" y="0" width="560" height="210" rx="16" fill="#0d1f2b" stroke="#2d4e60"/>
-      <g class="scanline" opacity="0.85">
-        <rect x="0" y="-10" width="560" height="36" fill="url(#bg)" opacity="0.5"/>
-      </g>
+    <rect x="638" y="420" width="560" height="210" rx="16" fill="#0d1d2b" stroke="#2b556d"/>
+    <text x="658" y="458" fill="#93b7d1" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif">09:10</text>
+    <text x="748" y="458" fill="#dfeefc" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Domain age short; registration anomaly</text>
+    <rect x="658" y="475" width="130" height="8" rx="4" fill="#ff9f43"/>
 
-      <g>
-        <text x="20" y="38" class="small">09:10</text>
-        <text x="110" y="38" class="body">Domain age short; registration anomaly</text>
-        <rect x="20" y="55" width="130" height="8" rx="4" fill="#ff9f43"/>
+    <text x="658" y="534" fill="#93b7d1" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif">09:42</text>
+    <text x="748" y="534" fill="#dfeefc" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Redirect chain: 3 hops → credential harvesting</text>
+    <rect x="658" y="551" width="260" height="8" rx="4" fill="#ff6b6b"/>
 
-        <text x="20" y="96" class="small">09:42</text>
-        <text x="110" y="96" class="body">Redirect chain: 3 hops → credential harvesting</text>
-        <rect x="20" y="113" width="260" height="8" rx="4" fill="#ff6b6b"/>
-
-        <text x="20" y="154" class="small">10:20</text>
-        <text x="110" y="154" class="body">Threat feed confidence rose to 87/100</text>
-        <rect x="20" y="171" width="380" height="8" rx="4" fill="#6de0b4"/>
-      </g>
-    </g>
+    <text x="658" y="590" fill="#93b7d1" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif">10:20</text>
+    <text x="748" y="590" fill="#dfeefc" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Threat feed confidence rose to 87/100</text>
+    <rect x="658" y="607" width="380" height="8" rx="4" fill="#64d9c2"/>
   </g>
 
-  <g class="floaty">
-    <rect x="1125" y="640" width="135" height="54" rx="14" fill="#0d1b26" stroke="#4d7d9d"/>
-    <text x="1155" y="674" class="body" style="fill:#eaf7ff;">ALERT</text>
+  <g>
+    <rect x="1125" y="645" width="135" height="54" rx="14" fill="#0d1b26" stroke="#4c7d9b"/>
     <circle cx="1145" cy="667" r="7" fill="#ff6b6b"/>
+    <text x="1158" y="674" fill="#edf8ff" font-size="18" font-weight="700" font-family="Segoe UI, Arial, sans-serif">ALERT</text>
   </g>
 </svg>
