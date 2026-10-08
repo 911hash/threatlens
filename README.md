@@ -6,9 +6,9 @@
 
 ---
 
-## 🚀 Live Demo
+## 🚀 Try It Live
 
-[![Live Demo](https://img.shields.io/badge/🔗%20Try%20ThreatLens-Live%20Demo-007AFF?style=for-the-badge)](https://threatlens-1uk.pages.dev/)
+[![Try It Live](https://img.shields.io/badge/🔗%20Try%20ThreatLens-Open%20App-007AFF?style=for-the-badge)](https://threatlens-1uk.pages.dev/)
 
 ---
 
