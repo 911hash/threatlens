@@ -4,24 +4,26 @@
 
 **ThreatLens is an explainability and threat-evolution layer, not a replacement for antivirus engines.**
 
-ThreatLens bridges the gap between raw, opaque telemetry (such as "14/72 engines flagged this URL") and actionable, explainable security decisions. It provides transparent scoring, historical verdict evolution tracking ("What changed?"), attack/redirect chain visualization, and executive plain-English summaries.
+🚀 **[Try the Live App](https://threatlens-1uk.pages.dev/)**
+
+ThreatLens bridges the gap between raw, opaque telemetry (such as "14/72 engines flagged this URL") and actionable, explainable security decisions. It provides transparent scoring, historical verdict drift tracking, attack chain visualization, and plain-English summaries for security analysts, incident responders, and decision makers.
 
 ---
 
 ## 1. What It Is & The Problem It Solves
 
 ### The Problem
-Traditional threat intelligence databases like VirusTotal excel at cataloging what security vendors detect at a single moment in time. However, security analysts, incident responders, and executives routinely face critical pain points:
+Traditional threat intelligence databases like VirusTotal excel at cataloging what security vendors detect at a single moment in time. However, security analysts, incident responders, and executives face critical blind spots:
 - **Opaque Scoring**: What does "4 detections" mean? Is it a high-confidence malware delivery site, or three legacy heuristics flagging an expired certificate?
-- **No Temporal Context (Verdict Drift)**: Attackers do not launch campaigns statically. A domain starts benign, builds reputation, modifies its redirect chain to point to credential harvesters, and is subsequently blacklisted. Traditional tools provide a snapshot without highlighting *what specifically changed*.
+- **No Temporal Context (Verdict Drift)**: Attackers do not launch campaigns statically. A domain starts benign, builds reputation, modifies its redirect chain to point to credential harvesters, and moves on when the campaign burns out. VirusTotal shows scan snapshots at dates T₁, T₂, T₃ … but never the explicit "what changed between T₁ and T₂?"
 - **Double Counting**: If five vendors ingest the same public blacklist feed, their 5 hits represent 1 independent signal, not 5 separate corroborations.
-- **Jargon & Decision Paralysis**: Non-specialists and decision makers need clear, plain-English guidance on what to do (e.g. "Do not enter credentials; revoke active sessions"), not just a wall of detection strings.
+- **Jargon & Decision Paralysis**: Non-specialists and decision makers need clear, plain-English guidance on what to do (e.g. "Do not enter credentials; revoke active sessions"), not just a wall of security vendor tags.
 
 ### The Solution: ThreatLens
 ThreatLens acts as an explainable interpretation layer sitting on top of multi-source intelligence:
-- **Transparent Scoring Formula**: Every point in the 0–100 risk score is mapped to visible evidence groups with explicit caps (`AV_DETECTIONS`, `REPUTATION_LISTS`, `DOMAIN_INFRA`, `BEHAVIOR`, `MITIGATING`) to mathematically prevent double-counting.
-- **Verdict Drift Tracking ("What Changed?")**: Deterministic comparative diffs highlight exact changes across scans: score deltas, added/removed factors, redirect hop deviations, and reputation feed additions.
-- **Independent Multi-Source Correlation**: Balances keyless sources (DNS resolution, RDAP domain age, crt.sh Certificate Transparency, OpenPhish) and keyed sources (VirusTotal, Google Safe Browsing, abuse.ch URLhaus) to compute an explicit **Confidence Score** (0–100%).
+- **Transparent Scoring Formula**: Every point in the 0–100 risk score is mapped to visible evidence groups with explicit caps (`AV_DETECTIONS`, `REPUTATION_LISTS`, `DOMAIN_INFRA`, `BEHAVIOR`, `TEMPORAL`). No black box.
+- **Verdict Drift Tracking ("What Changed?")**: Deterministic comparative diffs highlight exact changes across scans: score deltas, added/removed factors, redirect hop deviations, and reputation feed status transitions.
+- **Independent Multi-Source Correlation**: Balances keyless sources (DNS resolution, RDAP domain age, crt.sh Certificate Transparency, OpenPhish) and keyed sources (VirusTotal, Google Safe Browsing, Abuse.ch) to avoid double-counting vendor consensus.
 - **Attack Chain Graph**: Hand-crafted interactive SVG/CSS visualization tracing traffic flow through intermediate redirects, hosting ASN/IPs, and final landing destinations.
 - **Plain English Perspective**: Deterministic, LLM-free executive summaries for non-technical stakeholders alongside complete technical evidence breakdowns for SOC analysts.
 
@@ -162,7 +164,7 @@ Because ThreatLens actively traces URL redirect chains across the public web, st
    - Cloud metadata IP (`169.254.169.254`)
    - IPv6 unique local and link-local (`fc00::/7`, `fe80::/10`)
 3. **Per-Hop Redirect Validation**: Re-validates the resolved destination IP at **every single redirect hop** to prevent DNS rebinding or redirect-to-internal attacks.
-4. **Budget & Body Limits**: Maximum 5 redirects, 5-second per-request timeout, 10-second total budget. Uses `HEAD` first, falls back to streamed `GET` and terminates immediately after headers (no large body downloads).
+4. **Budget & Body Limits**: Maximum 5 redirects, 5-second per-request timeout, 10-second total budget. Uses `HEAD` first, falls back to streamed `GET` and terminates immediately after headers (no body download).
 5. **Port & Credential Filtering**: Only standard ports 80 and 443 permitted. Userinfo (`user:pass@host`) is rejected.
 6. **Defanging Everywhere**: All displayed URLs and network indicators are defanged by default (`hxxp://`, `example[.]com`) with an interactive toggle to prevent accidental clicks.
 
@@ -171,7 +173,7 @@ Because ThreatLens actively traces URL redirect chains across the public web, st
 ## 7. Privacy Guarantees
 
 1. **No Automatic URL Submission**: By default, URLs are looked up by report hash only (`ALLOW_VT_URL_SUBMISSION=false`). They are never submitted to public scanning engines without consent.
-2. **Zero File Uploads**: Uploaded files are stream-hashed in memory (`SHA-256`, `SHA-1`, `MD5`) and looked up by hash. Binary file contents are **never saved to disk** and never uploaded to external services unless `ALLOW_FILE_UPLOAD_TO_VT=true`.
+2. **Zero File Uploads**: Uploaded files are stream-hashed in memory (`SHA-256`, `SHA-1`, `MD5`) and looked up by hash. Binary file contents are **never saved to disk** and never uploaded to external services without explicit user opt-in.
 
 ---
 
