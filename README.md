@@ -6,11 +6,11 @@
 
 ---
 
-## 🚀 Try It Live
+<p align="center">
+  <img src="media/threatlens-demo.svg" alt="ThreatLens live demo preview" width="840" />
+</p>
 
-[![Try It Live](https://img.shields.io/badge/🔗%20Try%20ThreatLens-Open%20App-007AFF?style=for-the-badge)](https://threatlens-1uk.pages.dev/)
-
----
+**[▶ Open ThreatLens Live Demo](https://threatlens-1uk.pages.dev/)**
 
 ThreatLens bridges the gap between raw, opaque telemetry (such as "14/72 engines flagged this URL") and actionable, explainable security decisions. It provides transparent scoring, historical verdict drift tracking, attack chain visualization, and plain-English summaries for security analysts, incident responders, and decision makers.
 
