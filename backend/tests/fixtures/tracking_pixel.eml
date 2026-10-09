@@ -1,0 +1,17 @@
+From: newsletter@newsletter.example.test
+To: user@example.test
+Subject: Monthly Newsletter
+Date: Fri, 09 Oct 2026 10:00:00 +0000
+Message-ID: <news-456@newsletter.example.test>
+Authentication-Results: mx.mail-receiver.example.org; spf=pass; dkim=pass; dmarc=pass
+Content-Type: text/html
+
+<html>
+<body>
+  <h1>Newsletter</h1>
+  <p style="color: blue; font-size: 14px;">Welcome to our update!</p>
+  <img src="http://email-tracker.marketing.example.test/pixel.gif?uid=998877" width="1" height="1" alt="" />
+  <script>alert('malicious_script_execution')</script>
+  <iframe src="http://tracker.example.test/beacon"></iframe>
+</body>
+</html>

@@ -23,6 +23,18 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [reducedMotionPref, setReducedMotionPref] = useLocalStorage<boolean>('threatlens_motion_pref', false);
   const osReducedMotion = usePrefersReducedMotion();
 
+  // URL query parameter theme override
+  useEffect(() => {
+    try {
+      const urlTheme = new URLSearchParams(window.location.search).get('theme');
+      if (urlTheme === 'light' || urlTheme === 'dark') {
+        setTheme(urlTheme as ThemeMode);
+      }
+    } catch {
+      // Ignore URL parse errors
+    }
+  }, []);
+
   const isReducedMotion = reducedMotionPref || osReducedMotion;
 
   useEffect(() => {

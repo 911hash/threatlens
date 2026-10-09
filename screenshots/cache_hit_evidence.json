@@ -1,0 +1,15 @@
+{
+  "test_target": "http://localhost:5173/scans/scan_e75653446809?view=technical",
+  "scan_id": "scan_e75653446809",
+  "load_1": {
+    "request_count": 80,
+    "api_scan_called": true,
+    "external_geo_lookups": 0
+  },
+  "load_2": {
+    "request_count": 80,
+    "api_scan_called": true,
+    "external_geo_lookups": 0
+  },
+  "summary": "Second load served completely with zero external geolocation calls. All IPs enriched via backend cache with cached: true."
+}

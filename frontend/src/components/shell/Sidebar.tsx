@@ -13,6 +13,7 @@ import {
   Layers,
   Sparkles,
   RotateCcw,
+  Mail,
 } from 'lucide-react';
 import { useSidebar } from '../../context/SidebarContext';
 import { useThreatQuery } from '../../hooks/useThreatQuery';
@@ -48,6 +49,12 @@ export const Sidebar: React.FC = () => {
       label: 'Overview',
       icon: LayoutDashboard,
       isActive: ['/', '/dashboard', '/overview'].includes(location.pathname),
+    },
+    {
+      to: '/inbox',
+      label: 'Gmail Inbox',
+      icon: Mail,
+      isActive: location.pathname.startsWith('/inbox'),
     },
     {
       to: '/analyze',

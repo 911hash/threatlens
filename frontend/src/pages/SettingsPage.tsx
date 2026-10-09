@@ -24,13 +24,16 @@ import { useTheme } from '../design/ThemeContext';
 import { useDefang } from '../design/DefangContext';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useHealth } from '../hooks/useHealth';
+import { useThreatQuery } from '../hooks/useThreatQuery';
 import { useToast } from '../components/primitives/Toast';
 import { Button } from '../components/primitives/Button';
 import { Badge } from '../components/primitives/Badge';
+import { StatusDot } from '../components/primitives/StatusDot';
 import { Modal } from '../components/primitives/Modal';
 import { ErrorState } from '../components/primitives/ErrorState';
 import { Skeleton } from '../components/primitives/Skeleton';
 import { api } from '../api/client';
+import type { HealthConfig } from '../types/threat';
 
 export const SettingsPage: React.FC = () => {
   const toast = useToast();
@@ -41,6 +44,66 @@ export const SettingsPage: React.FC = () => {
   const { isDefanged, setDefanged } = useDefang();
   const [reportDefaultView, setReportDefaultView] = useLocalStorage<'plain' | 'technical'>('threatlens_report_view', 'plain');
   const { data: health } = useHealth();
+  const {
+    data: config,
+    isLoading: isConfigLoading,
+    isError: isConfigError,
+    refetch: refetchConfig,
+  } = useThreatQuery<HealthConfig>('health_config', () => api.getHealthConfig(), {
+    staleMs: 30000,
+  });
+
+  const sourceDefinitions = [
+    {
+      key: 'virustotal',
+      name: 'VirusTotal API Key',
+      envVar: 'VIRUSTOTAL_API_KEY',
+      type: 'keyed',
+      description: 'Multi-engine antivirus correlation and malicious file reputation scoring.',
+    },
+    {
+      key: 'google_safe_browsing',
+      name: 'Google Safe Browsing Key',
+      envVar: 'GOOGLE_SAFE_BROWSING_API_KEY',
+      type: 'keyed',
+      description: 'Google Web Threat blacklists for phishing, deceptive sites, and malware.',
+    },
+    {
+      key: 'urlhaus',
+      name: 'abuse.ch URLhaus Auth Key',
+      envVar: 'ABUSECH_AUTH_KEY',
+      type: 'keyed',
+      description: 'High-confidence community malware URL and active payload distribution feed.',
+    },
+    {
+      key: 'openphish',
+      name: 'OpenPhish Phishing Feed',
+      envVar: 'Public Feed (Keyless)',
+      type: 'keyless',
+      description: 'Zero-day phishing feed for targeted credentials theft and brand impersonation.',
+    },
+    {
+      key: 'rdap',
+      name: 'RDAP Domain Registry',
+      envVar: 'RFC 7480/7481 (Keyless)',
+      type: 'keyless',
+      description: 'Registration Data Access Protocol for authoritative domain registry data.',
+    },
+    {
+      key: 'dns',
+      name: 'DNS Resolution Engine',
+      envVar: 'System Socket (Keyless)',
+      type: 'keyless',
+      description: 'Authoritative nameserver and standard socket DNS record queries.',
+    },
+    {
+      key: 'crtsh',
+      name: 'crt.sh Certificate Logs',
+      envVar: 'CT Logs (Keyless)',
+      type: 'keyless',
+      description: 'Certificate Transparency log search for subdomains and SSL history.',
+    },
+  ];
 
   // Privacy toggles state (stored in localStorage)
   const [allowVtUrlSubmission, setAllowVtUrlSubmission] = useLocalStorage<boolean>(
@@ -134,75 +197,194 @@ export const SettingsPage: React.FC = () => {
         </p>
       </div>
 
+      {/* Top Banner: Single Demo Mode Banner when demo_mode is active */}
+      {config?.demo_mode && (
+        <div className="p-4 rounded-xl border border-purple-500/30 bg-purple-500/10 text-purple-300 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-purple-400 shrink-0" />
+            <span>
+              <strong>Simulation Active:</strong> Some live threat intelligence credentials are not configured. Falling back to offline simulated datasets.
+            </span>
+          </div>
+          <Badge variant="demo" size="xs">
+            Simulation Active
+          </Badge>
+        </div>
+      )}
+
       {/* SECTION 1: API KEYS & CREDENTIALS */}
       <div className="p-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-panel)] space-y-4">
         <div>
           <h2 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
             <Key className="w-4 h-4 text-indigo-400" />
-            <span>External Threat Intelligence Credentials</span>
+            <span>Threat Intelligence Sources & API Status</span>
           </h2>
           <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-            Keys are sourced from backend environment variables and masked. Full credentials are never exposed in browser runtime.
+            Live configuration status for third-party intelligence feeds. Secret keys are loaded securely server-side.
           </p>
         </div>
 
-        <div className="space-y-3 font-mono text-xs">
-          {[
-            {
-              name: 'VirusTotal API Key',
-              envVar: 'VIRUSTOTAL_API_KEY',
-              masked: 'vt_••••••••••••••••3a9b',
-              isConfigured: health?.configured_sources?.virustotal ?? false,
-              description: 'Multi-engine antivirus correlation and malicious file reputation scoring.',
-            },
-            {
-              name: 'Google Safe Browsing Key',
-              envVar: 'GOOGLE_SAFE_BROWSING_API_KEY',
-              masked: 'gsb_••••••••••••••••7c41',
-              isConfigured: health?.configured_sources?.google_safe_browsing ?? false,
-              description: 'Google Web Threat blacklists for phishing, deceptive sites, and malware.',
-            },
-            {
-              name: 'abuse.ch URLhaus Auth Key',
-              envVar: 'ABUSECH_AUTH_KEY',
-              masked: 'urlh_••••••••••••••••9e82',
-              isConfigured: health?.configured_sources?.urlhaus ?? false,
-              description: 'High-confidence community malware URL and active payload distribution feed.',
-            },
-          ].map((item) => (
-            <div
-              key={item.name}
-              className="p-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-inset)] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-            >
-              <div className="space-y-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-[var(--text-primary)] font-sans">{item.name}</span>
-                  <code className="text-[10px] text-[var(--text-tertiary)] bg-[var(--bg-panel)] px-1.5 py-0.5 rounded border border-[var(--border-subtle)]">
-                    {item.envVar}
-                  </code>
-                </div>
-                <p className="text-[11px] text-[var(--text-secondary)] font-sans">
-                  {item.description}
-                </p>
-              </div>
+        {isConfigLoading && !config ? (
+          <div className="space-y-3">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="w-full h-16 rounded-xl" />
+            ))}
+          </div>
+        ) : isConfigError && !config ? (
+          <div className="p-6 rounded-xl border border-red-500/30 bg-red-500/5 text-center space-y-3">
+            <p className="text-xs text-red-400 font-medium">Could not load configuration</p>
+            <Button variant="outline" size="xs" onClick={() => refetchConfig()}>
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3 font-mono text-xs">
+            {sourceDefinitions.map((item) => {
+              const live = config?.sources?.[item.key];
+              const isConfigured = live?.configured ?? false;
+              const type = live?.type ?? item.type;
 
-              <div className="flex items-center gap-2.5 shrink-0">
-                <span className="text-[11px] text-[var(--text-tertiary)] select-none">
-                  {item.isConfigured ? item.masked : '— Not set —'}
-                </span>
-                {item.isConfigured ? (
-                  <Badge variant="low" size="xs">
-                    Live Active
-                  </Badge>
-                ) : (
-                  <Badge variant="demo" size="xs">
-                    Demo Mode
-                  </Badge>
-                )}
-              </div>
-            </div>
-          ))}
+              let dotStatus: 'healthy' | 'degraded' | 'unavailable' = 'healthy';
+              let statusText = 'Configured';
+              let badgeVariant: 'success' | 'warning' | 'neutral' = 'success';
+
+              if (isConfigured) {
+                dotStatus = 'healthy';
+                statusText = 'Configured';
+                badgeVariant = 'success';
+              } else if (type === 'keyed') {
+                dotStatus = 'degraded';
+                statusText = 'Not set';
+                badgeVariant = 'warning';
+              } else {
+                dotStatus = 'unavailable';
+                statusText = 'Unavailable';
+                badgeVariant = 'neutral';
+              }
+
+              return (
+                <div
+                  key={item.key}
+                  className="p-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-inset)] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-[var(--text-primary)] font-sans">{item.name}</span>
+                      <code className="text-[10px] text-[var(--text-tertiary)] bg-[var(--bg-panel)] px-1.5 py-0.5 rounded border border-[var(--border-subtle)]">
+                        {item.envVar}
+                      </code>
+                    </div>
+                    <p className="text-[11px] text-[var(--text-secondary)] font-sans">
+                      {item.description}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <StatusDot
+                      status={dotStatus}
+                      size="sm"
+                      pulse={isConfigured}
+                    />
+                    <span className="text-[11px] text-[var(--text-secondary)] select-none">
+                      {statusText}
+                    </span>
+                    <Badge variant={badgeVariant} size="xs">
+                      {statusText}
+                    </Badge>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* SECTION: PROVIDER CHAIN */}
+      <div className="p-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-panel)] space-y-4">
+        <div>
+          <h2 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span>LLM Reasoning Provider Chain</span>
+          </h2>
+          <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+            Provider-agnostic AI reasoning pipeline. Automatically cascades through fallbacks upon rate limits.
+          </p>
         </div>
+
+        {isConfigLoading && !config ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="w-full h-16 rounded-xl" />
+            ))}
+          </div>
+        ) : isConfigError && !config ? (
+          <div className="p-6 rounded-xl border border-red-500/30 bg-red-500/5 text-center space-y-3">
+            <p className="text-xs text-red-400 font-medium">Could not load configuration</p>
+            <Button variant="outline" size="xs" onClick={() => refetchConfig()}>
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3 font-mono text-xs">
+            {[
+              {
+                role: 'Primary Provider',
+                name: 'Groq',
+                model: 'llama-3.3-70b-versatile',
+                configured: config?.llm?.primary?.configured ?? false,
+                desc: 'Sub-second ultrafast LPU inference for real-time inbox scanning and email triage.',
+              },
+              {
+                role: 'Fallback 1',
+                name: 'Cloudflare Workers AI',
+                model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+                configured: config?.llm?.fallback_1?.configured ?? false,
+                desc: 'Global edge inference fallback with 10k daily neuron headroom.',
+              },
+              {
+                role: 'Fallback 2',
+                name: 'Mistral',
+                model: 'mistral-small-latest',
+                configured: config?.llm?.fallback_2?.configured ?? false,
+                desc: 'Secondary resilient reasoning fallback with 1.1s rate pacing.',
+              },
+            ].map((provider) => (
+              <div
+                key={provider.name}
+                className="p-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-inset)] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-[var(--text-primary)] font-sans">{provider.name}</span>
+                    <Badge variant="outline" size="xs" className="font-mono text-[10px]">
+                      {provider.role}
+                    </Badge>
+                    <code className="text-[10px] text-[var(--text-tertiary)] bg-[var(--bg-panel)] px-1.5 py-0.5 rounded border border-[var(--border-subtle)]">
+                      {provider.model}
+                    </code>
+                  </div>
+                  <p className="text-[11px] text-[var(--text-secondary)] font-sans">
+                    {provider.desc}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <StatusDot
+                    status={provider.configured ? 'healthy' : 'degraded'}
+                    size="sm"
+                    pulse={provider.configured}
+                  />
+                  <span className="text-[11px] text-[var(--text-secondary)] select-none">
+                    {provider.configured ? 'Configured' : 'Not set'}
+                  </span>
+                  <Badge variant={provider.configured ? 'success' : 'warning'} size="xs">
+                    {provider.configured ? 'Configured' : 'Not set'}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* SECTION 2: PRIVACY & OUTBOUND SUBMISSIONS */}

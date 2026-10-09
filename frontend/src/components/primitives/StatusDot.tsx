@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type StatusDotState = 'live' | 'healthy' | 'degraded' | 'stale' | 'scanning' | 'offline';
+export type StatusDotState = 'live' | 'healthy' | 'degraded' | 'stale' | 'scanning' | 'offline' | 'unavailable';
 
 export interface StatusDotProps {
   status: StatusDotState;
@@ -53,6 +53,11 @@ export const StatusDot: React.FC<StatusDotProps> = ({
       dot: 'bg-red-500',
       pulseBg: 'bg-red-400',
       text: 'text-red-500',
+    },
+    unavailable: {
+      dot: 'bg-gray-400 dark:bg-gray-500',
+      pulseBg: 'bg-gray-400',
+      text: 'text-gray-400',
     },
   };
 

@@ -3,23 +3,27 @@ Main FastAPI Application for ThreatLens.
 Explainable threat intelligence layer.
 """
 
+from pathlib import Path
+from dotenv import load_dotenv
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+load_dotenv(REPO_ROOT / ".env", override=True)
+
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
 import os
 from typing import Any, Dict
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-load_dotenv()
-
 from .database import Base, SessionLocal, engine
 from .models import Alert, Scan, WatchlistItem, generate_id
-from .routes import analyze, demo, history, watchlist
-from .schemas import HealthResponse
+from .routes import analyze, auth, demo, history, inbox, watchlist
+from .schemas import HealthConfigResponse, HealthResponse
+from .services.gmail_worker import shutdown_gmail_polling_worker, start_gmail_polling_worker
 from .services.url_analysis import refang_target, trace_url_redirects, validate_url_syntax
 from .services.virustotal import VT_API_KEY, lookup_virustotal_hash, lookup_virustotal_url
 from .risk_engine import NormalizedEvidence, evaluate
@@ -60,8 +64,19 @@ async def _run_watchlist_rescan_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _background_task_handle
+    # Purge expired geolocation cache entries on startup (24h TTL)
+    try:
+        startup_db = SessionLocal()
+        from .services.geolocation import purge_expired_cache
+        purge_expired_cache(startup_db, max_age_hours=24)
+        startup_db.close()
+    except Exception:
+        pass
+
     _background_task_handle = asyncio.create_task(_run_watchlist_rescan_loop())
+    start_gmail_polling_worker()
     yield
+    shutdown_gmail_polling_worker()
     if _background_task_handle:
         _background_task_handle.cancel()
 
@@ -84,6 +99,8 @@ app.add_middleware(
 
 # Routers
 app.include_router(analyze.router)
+app.include_router(auth.router)
+app.include_router(inbox.router)
 app.include_router(history.router)
 app.include_router(watchlist.router)
 app.include_router(demo.router)
@@ -137,4 +154,39 @@ def health_check():
         configured_sources=configured_sources,
         demo_mode=demo_mode,
         timestamp=datetime.utcnow().isoformat(),
+    )
+
+
+@app.get("/api/health/config", response_model=HealthConfigResponse)
+def health_config():
+    vt_key = os.getenv("VIRUSTOTAL_API_KEY", "")
+    sb_key = os.getenv("GOOGLE_SAFE_BROWSING_API_KEY", "")
+    abuse_key = os.getenv("ABUSECH_AUTH_KEY", "")
+
+    sources = {
+        "virustotal": {"configured": bool(vt_key), "type": "keyed"},
+        "google_safe_browsing": {"configured": bool(sb_key), "type": "keyed"},
+        "urlhaus": {"configured": bool(abuse_key), "type": "keyed"},
+        "openphish": {"configured": True, "type": "keyless"},
+        "rdap": {"configured": True, "type": "keyless"},
+        "dns": {"configured": True, "type": "keyless"},
+        "crtsh": {"configured": True, "type": "keyless"},
+    }
+
+    groq_configured = bool(os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY"))
+    cf_configured = bool(os.getenv("CLOUDFLARE_ACCOUNT_ID") and os.getenv("CLOUDFLARE_API_TOKEN"))
+    mistral_configured = bool(os.getenv("MISTRAL_API_KEY"))
+
+    llm = {
+        "primary": {"provider": "groq", "configured": groq_configured},
+        "fallback_1": {"provider": "cloudflare", "configured": cf_configured},
+        "fallback_2": {"provider": "mistral", "configured": mistral_configured},
+    }
+
+    demo_mode = not bool(vt_key)
+
+    return HealthConfigResponse(
+        sources=sources,
+        llm=llm,
+        demo_mode=demo_mode,
     )

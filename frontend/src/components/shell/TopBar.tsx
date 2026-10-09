@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Eye, EyeOff, Sun, Moon } from 'lucide-react';
+import { Search, Eye, EyeOff, Sun, Moon, RefreshCw } from 'lucide-react';
 import { useTheme } from '../../design/ThemeContext';
 import { useDefang } from '../../design/DefangContext';
 import { useCommandPalette } from '../../context/CommandPaletteContext';
@@ -20,6 +20,15 @@ export const TopBar: React.FC = () => {
   const { isDefanged, toggleDefanged } = useDefang();
   const palette = useCommandPalette();
   const { status, data, lastChecked } = useHealth();
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    const handleSyncStatus = (e: any) => {
+      setIsSyncing(Boolean(e.detail?.syncing));
+    };
+    window.addEventListener('threatlens:inbox-syncing', handleSyncStatus);
+    return () => window.removeEventListener('threatlens:inbox-syncing', handleSyncStatus);
+  }, []);
 
   const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
@@ -30,6 +39,9 @@ export const TopBar: React.FC = () => {
 
     if (p === '/' || p === '/dashboard' || p === '/overview') {
       return [...base, { label: 'Overview' }];
+    }
+    if (p.startsWith('/inbox')) {
+      return [...base, { label: 'Gmail Inbox' }];
     }
     if (p.startsWith('/analyze')) {
       const sub = p.replace('/analyze', '').replace('/', '');
@@ -147,6 +159,18 @@ export const TopBar: React.FC = () => {
             {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
           </button>
         </Tooltip>
+
+        {/* Inbox Sync Indicator */}
+        {isSyncing && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-500/10 border border-blue-500/25 text-xs font-semibold text-blue-400 animate-pulse"
+          >
+            <RefreshCw className="w-3 h-3 animate-spin text-blue-400" />
+            <span className="hidden sm:inline">Syncing Inbox...</span>
+          </div>
+        )}
 
         {/* Health Status Dot */}
         <Tooltip content={healthTooltip}>

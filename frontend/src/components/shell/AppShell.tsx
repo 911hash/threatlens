@@ -1,8 +1,9 @@
 import React, { Suspense } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useDrawer } from '../../context/DrawerContext';
 import { useCommandPalette } from '../../context/CommandPaletteContext';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { api } from '../../api/client';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { DetailDrawer } from './DetailDrawer';
@@ -21,6 +22,7 @@ import {
 } from './PageSkeletons';
 
 // Route-Level Code Splitting (React.lazy)
+const InboxPage = React.lazy(() => import('../../pages/InboxPage').then(m => ({ default: m.InboxPage })));
 const DashboardPage = React.lazy(() => import('../../pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const AnalyzePage = React.lazy(() => import('../../pages/AnalyzePage').then(m => ({ default: m.AnalyzePage })));
 const InvestigationsPage = React.lazy(() => import('../../pages/HistoryPage').then(m => ({ default: m.InvestigationsPage })));
@@ -35,6 +37,19 @@ const NotFoundPage = React.lazy(() => import('../../pages/NotFoundPage').then(m 
 export const AppShell: React.FC = () => {
   const drawer = useDrawer();
   const palette = useCommandPalette();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Route /inbox — default landing when Gmail is connected
+  React.useEffect(() => {
+    if (location.pathname === '/' || location.pathname === '/dashboard') {
+      api.getGmailStatus().then((status) => {
+        if (status.connected) {
+          navigate('/inbox', { replace: true });
+        }
+      }).catch(() => {});
+    }
+  }, [location.pathname, navigate]);
 
   // Global Keyboard Shortcuts
   // 1. Cmd/Ctrl+K -> toggle command palette
@@ -108,6 +123,16 @@ export const AppShell: React.FC = () => {
                   }
                 />
 
+                {/* Gmail Inbox */}
+                <Route
+                  path="/inbox"
+                  element={
+                    <Suspense fallback={<DashboardSkeleton />}>
+                      <InboxPage />
+                    </Suspense>
+                  }
+                />
+
                 {/* Investigations / Scans / History aliases */}
                 <Route
                   path="/scans"
@@ -161,6 +186,14 @@ export const AppShell: React.FC = () => {
                 />
                 <Route
                   path="/analyze/file"
+                  element={
+                    <Suspense fallback={<AnalyzeSkeleton />}>
+                      <AnalyzePage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/analyze/email"
                   element={
                     <Suspense fallback={<AnalyzeSkeleton />}>
                       <AnalyzePage />

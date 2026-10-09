@@ -1,6 +1,18 @@
 import React from 'react';
 
-export type BadgeVariant = 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'outline' | 'demo';
+export type BadgeVariant =
+  | 'neutral'
+  | 'info'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'outline'
+  | 'demo'
+  | 'critical'
+  | 'high'
+  | 'medium'
+  | 'low'
+  | 'clean';
 export type BadgeSize = 'xs' | 'sm';
 
 export interface BadgeProps {
@@ -38,13 +50,22 @@ export const Badge: React.FC<BadgeProps> = ({
       'bg-transparent text-[var(--text-primary)] border border-[var(--border-strong)]',
     demo:
       'bg-purple-500/10 text-purple-600 border border-purple-500/30 dark:text-purple-400 font-mono tracking-wider',
+    critical:
+      'bg-red-500/10 text-red-600 border border-red-500/30 dark:text-red-400',
+    high:
+      'bg-orange-500/10 text-orange-600 border border-orange-500/30 dark:text-orange-400',
+    medium:
+      'bg-amber-500/10 text-amber-600 border border-amber-500/30 dark:text-amber-400',
+    low:
+      'bg-sky-500/10 text-sky-600 border border-sky-500/30 dark:text-sky-400',
+    clean:
+      'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 dark:text-emerald-400',
   };
 
   return (
     <span
-      className={`inline-flex items-center rounded select-none uppercase tracking-wider ${
-        sizeStyles[size]
-      } ${variantStyles[variant]} ${className}`}
+      className={`inline-flex items-center rounded select-none uppercase tracking-wider ${sizeStyles[size]
+        } ${variantStyles[variant]} ${className}`}
     >
       {icon && <span className="shrink-0">{icon}</span>}
       <span>{children}</span>

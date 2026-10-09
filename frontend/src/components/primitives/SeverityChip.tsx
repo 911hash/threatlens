@@ -71,7 +71,7 @@ export const SeverityChip: React.FC<SeverityChipProps> = ({
       )}
       <span>{token.label}</span>
       {score !== undefined && (
-        <span className="font-mono ml-0.5 opacity-90">{score}</span>
+        <span className="font-mono ml-0.5 opacity-90">{score != null ? score : '—'}</span>
       )}
     </span>
   );

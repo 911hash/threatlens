@@ -16,6 +16,7 @@ import {
   Compass,
   FileCheck,
   AlertTriangle,
+  Mail,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { Button } from '../components/primitives/Button';
@@ -35,15 +36,16 @@ export const AnalyzePage: React.FC = () => {
   const stateOverride = searchParams.get('state');
 
   // Determine active tab from URL path
-  const getTabFromPath = (): 'url' | 'hash' | 'file' => {
+  const getTabFromPath = (): 'url' | 'hash' | 'file' | 'email' => {
     if (location.pathname.includes('/hash')) return 'hash';
     if (location.pathname.includes('/file')) return 'file';
+    if (location.pathname.includes('/email')) return 'email';
     return 'url';
   };
 
   const activeTab = getTabFromPath();
 
-  const switchTab = (tab: 'url' | 'hash' | 'file') => {
+  const switchTab = (tab: 'url' | 'hash' | 'file' | 'email') => {
     setError(null);
     navigate(`/analyze/${tab}`);
   };
@@ -66,6 +68,13 @@ export const AnalyzePage: React.FC = () => {
       setInputValue(q);
     }
   }, [searchParams]);
+
+  // Auto-load demo email sample when in demo state
+  useEffect(() => {
+    if (stateOverride === 'demo' && activeTab === 'email' && !file) {
+      loadSampleEmail('phish');
+    }
+  }, [stateOverride, activeTab, file]);
 
   // Hash auto-detection logic
   const detectedHashType = React.useMemo(() => {
@@ -186,6 +195,11 @@ export const AnalyzePage: React.FC = () => {
         setError('Please select or drop a file sample to analyze.');
         return;
       }
+    } else if (activeTab === 'email') {
+      if (!file) {
+        setError('Please select or drop an .eml or .msg email sample to analyze.');
+        return;
+      }
     }
 
     try {
@@ -195,13 +209,19 @@ export const AnalyzePage: React.FC = () => {
         scanResult = await api.analyzeUrl(inputValue.trim(), true);
       } else if (activeTab === 'hash') {
         scanResult = await api.analyzeHash(inputValue.trim());
-      } else if (file) {
+      } else if (activeTab === 'file') {
         scanResult = await api.analyzeFile(file);
+      } else if (activeTab === 'email') {
+        scanResult = await api.analyzeEmail(file);
       }
 
       if (scanResult && scanResult.id) {
         toast.success(`Analysis finished: ${scanResult.risk_level} (${scanResult.risk_score}/100)`);
-        navigate(`/scans/${scanResult.id}`);
+        if (activeTab === 'email') {
+          navigate(`/scans/${scanResult.id}`, { state: { emailAnalysis: scanResult } });
+        } else {
+          navigate(`/scans/${scanResult.id}`);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Analysis processing failed. The remote service may be unavailable.');
@@ -210,7 +230,21 @@ export const AnalyzePage: React.FC = () => {
     }
   };
 
-  // State overrides for testing matrix
+  const loadSampleEmail = (type: 'phish' | 'clean') => {
+    const content =
+      type === 'phish'
+        ? `From: service@example-corp.test\nReply-To: credential-harvest@evil-phishing-host.test\nSubject: Urgent: Verify Account Immediately\nMessage-ID: <urgent-verify-99@evil-phishing-host.test>\nAuthentication-Results: mx.mail-receiver.example.org; spf=fail; dkim=fail; dmarc=fail\nReceived: from c2.evil-phishing-host.test ([198.51.100.99]) by mx.mail-receiver.example.org; Fri, 09 Oct 2026 10:00:00 +0000\nContent-Type: text/plain\n\nPlease restore your account at http://evil-phish-login.example.test`
+        : `From: security@example-corp.test\nTo: employee@example-corp.test\nSubject: Quarterly Corporate Security Report\nMessage-ID: <sec-report-100@example-corp.test>\nAuthentication-Results: mx.mail-receiver.example.org; spf=pass; dkim=pass; dmarc=pass; arc=pass\nReceived: from mail.example-corp.test ([192.0.2.1]) by mx.mail-receiver.example.org; Fri, 09 Oct 2026 10:00:00 +0000\nContent-Type: text/plain\n\nAll security systems active and operating normally.`;
+    const blob = new Blob([content], { type: 'message/rfc822' });
+    const sampleFile = new File(
+      [blob],
+      type === 'phish' ? 'urgent_phish_sample.eml' : 'corporate_security_update.eml',
+      { type: 'message/rfc822' }
+    );
+    handleFileSelection(sampleFile);
+  };
+
+  // State overrides for testing matrix: loading, empty, error, partial, stale, demo
   if (stateOverride === 'loading') {
     return (
       <div className="max-w-4xl mx-auto py-12 px-4 space-y-6">
@@ -226,7 +260,7 @@ export const AnalyzePage: React.FC = () => {
         <ErrorState
           title="Analysis Engine Offline"
           message="Unable to reach analysis workers. Simulated error state for verification."
-          onRetry={() => navigate('/analyze/url')}
+          onRetry={() => navigate(`/analyze/${activeTab}`)}
         />
       </div>
     );
@@ -236,11 +270,15 @@ export const AnalyzePage: React.FC = () => {
     return (
       <div className="max-w-3xl mx-auto py-16 px-4">
         <EmptyState
-          title="No Target Selected"
-          description="Choose an analysis target type to begin automated indicator correlation."
+          title={activeTab === 'email' ? 'No Email Sample Selected' : 'No Target Selected'}
+          description={
+            activeTab === 'email'
+              ? 'Select or drop an .eml or .msg message file to analyze authentication and header provenance.'
+              : 'Choose an analysis target type to begin automated indicator correlation.'
+          }
           action={
-            <Button variant="primary" size="sm" onClick={() => switchTab('url')}>
-              Start URL Analysis
+            <Button variant="primary" size="sm" onClick={() => switchTab(activeTab)}>
+              {activeTab === 'email' ? 'Select Email Sample' : 'Start URL Analysis'}
             </Button>
           }
         />
@@ -248,8 +286,53 @@ export const AnalyzePage: React.FC = () => {
     );
   }
 
+  if (stateOverride === 'partial') {
+    return (
+      <div className="max-w-4xl mx-auto py-12 px-4 space-y-6">
+        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-300 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Partial Analysis in Progress: Parsing header provenance chain (3 of 4 checks completed)...</span>
+          </div>
+          <Badge variant="neutral" size="xs">Partial Ingestion</Badge>
+        </div>
+        <Skeleton className="w-full h-64 rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (stateOverride === 'stale') {
+    return (
+      <div className="max-w-4xl mx-auto py-12 px-4 space-y-6">
+        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-300 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <RotateCcw className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Cached Snapshot: Previous analysis results for this indicator may be stale (&gt;12h old).</span>
+          </div>
+          <Button variant="secondary" size="xs" onClick={() => navigate(`/analyze/${activeTab}`)}>
+            Refresh Now
+          </Button>
+        </div>
+        <Skeleton className="w-full h-72 rounded-2xl" />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto py-10 px-4 space-y-8 pb-16 animate-in fade-in duration-150">
+      {/* Demo Mode Banner */}
+      {stateOverride === 'demo' && (
+        <div className="p-3.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-xs text-blue-300 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Sparkles className="w-4 h-4 text-blue-400 shrink-0" />
+            <span>
+              <strong>Demo Environment Active:</strong> Synthetic {activeTab === 'email' ? 'phishing email (.eml)' : 'indicator'} preloaded for forensic workflow evaluation.
+            </span>
+          </div>
+          <Badge variant="neutral" size="xs">Simulated Walkthrough</Badge>
+        </div>
+      )}
+
       {/* Header */}
       <div className="text-center space-y-2">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-mono">
@@ -260,7 +343,7 @@ export const AnalyzePage: React.FC = () => {
           Analyze & Correlate Indicators
         </h1>
         <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-xl mx-auto">
-          Multi-source reputation, infrastructure telemetry, and attack chain reconstruction.
+          Multi-source reputation, infrastructure telemetry, attack chain reconstruction, and email forensics.
         </p>
       </div>
 
@@ -268,11 +351,12 @@ export const AnalyzePage: React.FC = () => {
       <div className="bg-[var(--bg-panel)] border border-[var(--border-subtle)] rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
         {/* Tab Selection */}
         <div className="flex justify-center">
-          <SegmentedControl<'url' | 'hash' | 'file'>
+          <SegmentedControl<'url' | 'hash' | 'file' | 'email'>
             options={[
               { value: 'url', label: 'URL / Domain', icon: <Globe className="w-4 h-4 text-blue-400" /> },
               { value: 'hash', label: 'File Hash', icon: <Binary className="w-4 h-4 text-purple-400" /> },
               { value: 'file', label: 'Sample File', icon: <UploadCloud className="w-4 h-4 text-amber-400" /> },
+              { value: 'email', label: 'Email (.eml / .msg)', icon: <Mail className="w-4 h-4 text-emerald-400" /> },
             ]}
             value={activeTab}
             onChange={switchTab}
@@ -531,6 +615,127 @@ export const AnalyzePage: React.FC = () => {
             </div>
           )}
 
+          {/* TAB 4: EMAIL */}
+          {activeTab === 'email' && (
+            <div className="space-y-4">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".eml,.msg,message/rfc822"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handleFileSelection(e.target.files[0]);
+                  }
+                }}
+              />
+
+              {/* Email File Drop Area */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && fileInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleFileSelection(e.dataTransfer.files[0]);
+                  }
+                }}
+                className="p-8 border-2 border-dashed border-[var(--border-strong)] hover:border-emerald-500 rounded-2xl bg-[var(--bg-inset)] transition-all cursor-pointer text-center space-y-3"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto">
+                  <Mail className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-[var(--text-primary)]">
+                    Drop .eml or .msg email file here, or click to browse
+                  </div>
+                  <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                    Maximum file size: 32MB. RFC 822 emails and Outlook .msg supported. Stream-hashed in memory.
+                  </p>
+                </div>
+              </div>
+
+              {/* Real-byte Progress Bar during hashing */}
+              {isHashing && file && (
+                <div className="p-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-panel)] space-y-2">
+                  <ProgressBar
+                    value={hashProgressBytes}
+                    max={file.size}
+                    label="Calculating in-memory cryptographic hash for email stream..."
+                    valueFormatter={(v) =>
+                      `${(v / 1024).toFixed(1)} KB / ${(file.size / 1024).toFixed(1)} KB`
+                    }
+                    variant="default"
+                  />
+                </div>
+              )}
+
+              {/* File Preview and Computed Hash */}
+              {file && !isHashing && (
+                <div className="p-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <FileCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                          {file.name}
+                        </div>
+                        <div className="text-[11px] text-[var(--text-secondary)]">
+                          {(file.size / 1024).toFixed(1)} KB · {file.type || 'message/rfc822'}
+                        </div>
+                      </div>
+                    </div>
+                    <Badge variant="low" size="xs">
+                      Ready for Forensics
+                    </Badge>
+                  </div>
+
+                  {fileHash && (
+                    <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1">
+                      <span className="text-[10px] uppercase font-mono text-[var(--text-tertiary)]">
+                        In-Memory SHA-256 Digest
+                      </span>
+                      <div className="text-xs font-mono text-emerald-400 break-all bg-[var(--bg-inset)] p-2 rounded-lg border border-[var(--border-subtle)]">
+                        {fileHash}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Sample Email Fixtures */}
+              <div className="flex items-center gap-2 pt-1 text-[11px] flex-wrap">
+                <span className="text-[var(--text-tertiary)] font-mono">Sample email fixtures:</span>
+                <button
+                  type="button"
+                  onClick={() => loadSampleEmail('phish')}
+                  className="px-2.5 py-1 rounded-md bg-[var(--bg-inset)] border border-red-500/30 text-red-400 hover:bg-red-500/10 font-mono transition-colors cursor-pointer"
+                >
+                  Phishing Spoof Sample (.eml)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadSampleEmail('clean')}
+                  className="px-2.5 py-1 rounded-md bg-[var(--bg-inset)] border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 font-mono transition-colors cursor-pointer"
+                >
+                  Clean Corporate Update (.eml)
+                </button>
+              </div>
+
+              {/* Strict Privacy Mode Notice */}
+              <div className="p-3.5 rounded-xl border border-blue-500/25 bg-blue-500/5 text-xs text-[var(--text-secondary)] flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <span className="font-semibold text-[var(--text-primary)]">Privacy Mode: </span>
+                  Email content analyzed locally. Nothing transmitted. Email file and attachments are stream-hashed in memory and NEVER written to disk, NEVER uploaded to external services, and NEVER retained.
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
           {error && (
             <div className="p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-xs text-red-400 flex items-center gap-2">
@@ -545,6 +750,7 @@ export const AnalyzePage: React.FC = () => {
               {activeTab === 'url' && (!inputValue.trim() ? 'Enter a URL to proceed' : 'Ready to evaluate')}
               {activeTab === 'hash' && (!inputValue.trim() ? 'Enter a hash to proceed' : 'Ready to evaluate')}
               {activeTab === 'file' && (!file ? 'Select a file to proceed' : 'Ready to evaluate')}
+              {activeTab === 'email' && (!file ? 'Select an email file (.eml / .msg) to proceed' : 'Ready to evaluate')}
             </div>
 
             <Button
@@ -556,7 +762,8 @@ export const AnalyzePage: React.FC = () => {
                 isHashing ||
                 (activeTab === 'url' && (!inputValue.trim() || Boolean(urlValidation && !urlValidation.valid))) ||
                 (activeTab === 'hash' && (!inputValue.trim() || Boolean(detectedHashType && !detectedHashType.valid))) ||
-                (activeTab === 'file' && !file)
+                (activeTab === 'file' && !file) ||
+                (activeTab === 'email' && !file)
               }
               className="flex items-center gap-2 px-6"
             >

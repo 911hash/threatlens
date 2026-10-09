@@ -30,6 +30,34 @@ def test_health_endpoint(client):
     assert isinstance(data["configured_sources"], dict)
 
 
+def test_health_config_endpoint(client):
+    resp = client.get("/api/health/config")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "sources" in data
+    assert "llm" in data
+    assert "demo_mode" in data
+
+    # Check sources structure
+    for src in ["virustotal", "google_safe_browsing", "urlhaus", "openphish", "rdap", "dns", "crtsh"]:
+        assert src in data["sources"]
+        assert isinstance(data["sources"][src]["configured"], bool)
+        assert data["sources"][src]["type"] in ("keyed", "keyless")
+
+    # Check LLM chain structure
+    assert data["llm"]["primary"]["provider"] == "groq"
+    assert isinstance(data["llm"]["primary"]["configured"], bool)
+    assert data["llm"]["fallback_1"]["provider"] == "cloudflare"
+    assert isinstance(data["llm"]["fallback_1"]["configured"], bool)
+    assert data["llm"]["fallback_2"]["provider"] == "mistral"
+    assert isinstance(data["llm"]["fallback_2"]["configured"], bool)
+
+    # Ensure zero key material leaked
+    raw_text = resp.text
+    for secret_marker in ["gsk_", "GOCSPX", "sk-", "Bearer "]:
+        assert secret_marker not in raw_text
+
+
 def test_demo_seed_and_info(client):
     # Test GET /api/demo
     demo_info = client.get("/api/demo")

@@ -1,0 +1,15 @@
+From: security@example-corp.test
+Reply-To: phisher@evil-c2.test
+Subject: CRITICAL: Security Verification Required
+Date: Fri, 09 Oct 2026 12:00:00 +0000
+Message-ID: <threat-demo-888@evil-c2.test>
+Authentication-Results: mx.mail-receiver.example.org;
+       dkim=fail;
+       spf=fail;
+       dmarc=fail (p=REJECT) header.from=example-corp.test;
+       arc=none
+Received: from inbound.mailgateway.aws.com ([52.94.76.1]) by mx.mail-receiver.example.org with ESMTP; Fri, 09 Oct 2026 12:00:02 +0000
+Received: from tor-relay-exit.node.de ([185.220.101.5]) by inbound.mailgateway.aws.com with ESMTP; Fri, 09 Oct 2026 12:00:00 +0000
+Content-Type: text/plain
+
+Urgent account suspension alert. Please confirm your credentials.

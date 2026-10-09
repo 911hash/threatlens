@@ -34,7 +34,7 @@ export interface AttackChainGraph {
 export interface Scan {
   id: string;
   target: string;
-  target_type: 'url' | 'hash' | 'file';
+  target_type: 'url' | 'hash' | 'file' | 'email';
   timestamp: string;
   risk_score: number;
   risk_level: RiskLevel;
@@ -53,7 +53,140 @@ export interface Scan {
   delta_vs_previous?: number;
   level_changed_vs_previous?: boolean;
   previous_scan_id?: string;
+  // Email-specific extensions
+  parse_result?: EmailParseResult;
+  auth_result?: EmailAuthResult;
+  header_analysis?: EmailHeaderAnalysis;
+  sanitized_html?: string;
+  file_sha256?: string;
+  file_size?: number;
+  geo_results?: GeoLocation[];
+  privacy_mode?: 'hash_only' | 'full' | string;
+  llm_result?: LLMResult;
+  anonymized_prompt?: string;
+  gmail_id?: string;
 }
+
+export interface LLMResult {
+  summary: string;
+  provider_used: string;
+  latency_ms: number;
+  cache_hit: boolean;
+  raw_response?: string;
+  anonymized_prompt?: string;
+}
+
+export interface GmailAuthStatus {
+  connected: boolean;
+  email: string | null;
+  connected_at?: string | null;
+  last_sync_at?: string | null;
+}
+
+export interface InboxItem {
+  gmail_id: string;
+  message_id?: string;
+  subject?: string;
+  from_address?: string;
+  from_domain?: string;
+  date?: string;
+  risk_score: number;
+  risk_level: RiskLevel;
+  has_geo: boolean;
+  has_ai: boolean;
+  scan_id: string;
+}
+
+export interface GeoLocation {
+  ip: string;
+  country: string;
+  country_code?: string;
+  region: string;
+  city: string;
+  lat?: number;
+  lon?: number;
+  timezone?: string;
+  isp?: string;
+  asn?: string;
+  org?: string;
+  is_vpn: boolean;
+  is_proxy: boolean;
+  is_tor: boolean;
+  is_datacenter: boolean;
+  is_unknown: boolean;
+  cached: boolean;
+}
+
+export interface EmailAttachment {
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  sha256: string;
+  md5?: string;
+  is_suspicious: boolean;
+}
+
+export interface EmailAuthResult {
+  spf: 'pass' | 'fail' | 'none' | 'neutral' | string;
+  dkim: 'pass' | 'fail' | 'none' | 'neutral' | string;
+  dmarc: 'pass' | 'fail' | 'none' | string;
+  arc: 'pass' | 'fail' | 'none' | string;
+  spf_domain?: string;
+  dkim_domain?: string;
+  from_domain?: string;
+  spf_aligned?: boolean;
+  dkim_aligned?: boolean;
+  dmarc_policy?: string;
+  details?: Record<string, any>;
+}
+
+export interface EmailHeaderHop {
+  hop_index: number;
+  from_host?: string;
+  by_host?: string;
+  ip?: string;
+  timestamp?: string;
+  delay_seconds?: number;
+}
+
+export interface EmailHeaderAnalysis {
+  hop_count: number;
+  hops: EmailHeaderHop[];
+  timing_gaps: string[];
+  unexpected_relays: string[];
+  has_timing_anomaly: boolean;
+  sender_reply_to_mismatch: boolean;
+  mismatch_details?: string;
+  x_spam_status?: string;
+  x_mailer?: string;
+  x_originating_ip?: string;
+  sender_ips?: string[];
+  geo_results?: GeoLocation[];
+  anomalies: string[];
+}
+
+export interface EmailParseResult {
+  message_id?: string;
+  date?: string;
+  subject?: string;
+  sender?: string;
+  from_address?: string;
+  from_domain?: string;
+  to_addresses: string[];
+  cc_addresses: string[];
+  reply_to?: string;
+  headers: Record<string, any>;
+  plain_body?: string;
+  html_body?: string;
+  sanitized_html?: string;
+  attachments: EmailAttachment[];
+  sender_ips: string[];
+  hop_count: number;
+  is_malformed: boolean;
+  parse_errors: string[];
+}
+
+export type EmailAnalysisResponse = Scan;
 
 export interface CompareResult {
   score_delta: number;
@@ -124,6 +257,35 @@ export interface HealthStatus {
   configured_sources: Record<string, boolean>;
   demo_mode: boolean;
   timestamp: string;
+}
+
+export interface SourceConfigItem {
+  configured: boolean;
+  type: 'keyed' | 'keyless' | string;
+}
+
+export interface LLMProviderConfigItem {
+  provider: string;
+  configured: boolean;
+}
+
+export interface HealthConfig {
+  sources: {
+    virustotal: SourceConfigItem;
+    google_safe_browsing: SourceConfigItem;
+    urlhaus: SourceConfigItem;
+    openphish: SourceConfigItem;
+    rdap: SourceConfigItem;
+    dns: SourceConfigItem;
+    crtsh: SourceConfigItem;
+    [key: string]: SourceConfigItem;
+  };
+  llm: {
+    primary: LLMProviderConfigItem;
+    fallback_1: LLMProviderConfigItem;
+    fallback_2: LLMProviderConfigItem;
+  };
+  demo_mode: boolean;
 }
 
 export interface DemoInfo {

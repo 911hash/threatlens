@@ -1,0 +1,14 @@
+From: service@example-corp.test
+Reply-To: credential-harvest@evil-phishing-host.test
+Subject: Urgent: Verify Your Account Immediately!
+Date: Fri, 09 Oct 2026 10:00:00 +0000
+Message-ID: <phish-999@evil-phishing-host.test>
+Authentication-Results: mx.mail-receiver.example.org;
+       dkim=fail;
+       spf=fail (mail-receiver.example.org: domain of service@example-corp.test does not designate 198.51.100.99 as permitted sender) smtp.mailfrom=spoof@evil-phishing-host.test;
+       dmarc=fail (p=REJECT) header.from=example-corp.test;
+       arc=none
+Received: from c2.evil-phishing-host.test ([198.51.100.99]) by mx.mail-receiver.example.org with ESMTP; Fri, 09 Oct 2026 10:00:00 +0000
+Content-Type: text/plain
+
+Click here to restore account access immediately.

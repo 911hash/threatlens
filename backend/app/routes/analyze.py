@@ -3,7 +3,10 @@ Analysis endpoints for URLs, hashes, and uploaded files.
 Handles SSRF protection, multi-source ingestion, rate limits, and risk scoring.
 """
 
+import email
+import email.policy
 import hashlib
+import html
 import json
 import os
 import re
@@ -14,16 +17,28 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Scan, generate_id
-from ..risk_engine import NormalizedEvidence, evaluate
+from ..risk_engine import EVIDENCE_GROUPS, Factor, LEVEL_THRESHOLDS, NormalizedEvidence, evaluate
 from ..schemas import (
     AnalyzeHashRequest,
     AnalyzeUrlRequest,
     AttackChainGraph,
+    AttackChainLink,
+    AttackChainNode,
+    EmailAnalysisResponse,
+    EmailAuthResult,
+    EmailHeaderAnalysis,
+    EmailParseResult,
     FactorResponse,
+    GeoLocationResponse,
     ScanResponse,
 )
 from ..services.attack_chain import build_attack_chain
 from ..services.dns_rdap import lookup_crtsh, lookup_rdap, resolve_dns
+from ..services.email_auth import parse_authentication_results
+from ..services.email_headers import analyze_headers
+from ..services.email_parser import parse_email
+from ..services.email_forensics import process_email_forensics
+from ..services.geolocation import geolocate_ip
 from ..services.feeds import lookup_openphish, lookup_urlhaus
 from ..services.safe_browsing import lookup_safe_browsing
 from ..services.url_analysis import (
@@ -97,6 +112,7 @@ def serialize_scan_response(
         delta_vs_previous=delta_vs_previous,
         level_changed_vs_previous=level_changed_vs_previous,
         previous_scan_id=previous_scan_id,
+        geo_results=raw_summary.get("geo_results", []),
     )
 
 
@@ -140,10 +156,10 @@ async def analyze_url(req: AnalyzeUrlRequest, db: Session = Depends(get_db)):
     # Is demo mode active?
     is_demo = not bool(VT_API_KEY)
 
-    # In demo mode, check if this is the featured demo URL
+    # Check if this is the featured demo URL
     sim_override_score = None
     extra_demo_factor = None
-    if is_demo and "example-phishing-login.com" in cleaned_url:
+    if "example-phishing-login.com" in cleaned_url:
         latest_scan = db.query(Scan).filter(Scan.target == cleaned_url).order_by(Scan.timestamp.desc()).first()
         prev_score = latest_scan.risk_score if latest_scan else 82
         prev_det = latest_scan.detection_count if latest_scan else 28
@@ -275,7 +291,7 @@ async def analyze_url(req: AnalyzeUrlRequest, db: Session = Depends(get_db)):
         "recommended_action": assessment.recommended_action,
         "redirects": redirect_info,
         "attack_chain": attack_chain.model_dump(),
-        "reputation_lists_flagged": flagged_rep_lists if (is_demo and "example-phishing-login.com" in cleaned_url) else [
+        "reputation_lists_flagged": flagged_rep_lists if "example-phishing-login.com" in cleaned_url else [
             src for src, res in [("Safe Browsing", sb_res), ("URLhaus", urlhaus_res), ("OpenPhish", openphish_res)]
             if (res.get("data") or {}).get("flagged")
         ],
@@ -303,7 +319,7 @@ async def analyze_url(req: AnalyzeUrlRequest, db: Session = Depends(get_db)):
         factors_json=json.dumps(factors_dict),
         raw_summary_json=json.dumps(raw_summary),
         sources_json=json.dumps(sources_dict),
-        is_demo=is_demo,
+        is_demo=is_demo or ("example-phishing-login.com" in cleaned_url),
         created_at=datetime.utcnow(),
     )
 
@@ -503,3 +519,54 @@ async def analyze_file(file: UploadFile = File(...), db: Session = Depends(get_d
     db.refresh(scan)
 
     return serialize_scan_response(scan)
+
+
+@router.post("/email", response_model=EmailAnalysisResponse)
+async def analyze_email(
+    file: UploadFile = File(...),
+    hash_only: bool = False,
+    db: Session = Depends(get_db),
+):
+    """
+    Stream-hash and forensically analyze uploaded email (.eml or .msg).
+    Strict Privacy Mode: Email file and attachments are processed purely in memory,
+    never written to disk, never sent to third-party APIs, and never retained.
+    Only analytical metadata, hashes, and authentication verdicts are persisted.
+    """
+    filename = file.filename or "sample.eml"
+    fn_lower = filename.lower()
+
+    # Validate file extension (.eml or .msg)
+    if not (fn_lower.endswith(".eml") or fn_lower.endswith(".msg") or file.content_type == "message/rfc822"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "INVALID_FILE_TYPE", "message": "Only .eml and .msg email files are supported."},
+        )
+
+    # 1. Stream-hash file into memory buffer (max 32MB)
+    sha256 = hashlib.sha256()
+    sha1 = hashlib.sha1()
+    md5 = hashlib.md5()
+    buffer = bytearray()
+    total_size = 0
+
+    while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > MAX_FILE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail={"code": "FILE_TOO_LARGE", "message": "Uploaded email exceeds maximum allowed size of 32 MB."},
+            )
+        sha256.update(chunk)
+        sha1.update(chunk)
+        md5.update(chunk)
+        buffer.extend(chunk)
+
+    raw_bytes = bytes(buffer)
+    _, response = await process_email_forensics(raw_bytes, filename=filename, hash_only=hash_only, db=db)
+    return response
+
+

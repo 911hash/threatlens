@@ -1,6 +1,21 @@
 """
 Pure explainable risk scoring engine for ThreatLens.
 No network, no database, no system clock calls inside.
+
+Evidence Groups and Caps:
+- AV_DETECTIONS: cap +50 (floor 0)
+- REPUTATION_LISTS: cap +35 (floor 0)
+- DOMAIN_INFRA: cap +20 (floor 0)
+- BEHAVIOR: cap +30 (floor 0)
+- GEOLOCATION: cap +15 (floor 0)
+- MITIGATING: cap 0 (floor -30)
+
+Threshold Tiers:
+- CRITICAL: 80 - 100
+- HIGH: 55 - 79
+- MEDIUM: 30 - 54
+- LOW: 10 - 29
+- SAFE: 0 - 9
 """
 
 from dataclasses import dataclass, field
@@ -13,6 +28,7 @@ EVIDENCE_GROUPS = {
     "REPUTATION_LISTS": {"cap": 35, "floor": 0},
     "DOMAIN_INFRA": {"cap": 20, "floor": 0},
     "BEHAVIOR": {"cap": 30, "floor": 0},
+    "GEOLOCATION": {"cap": 15, "floor": 0},
     "MITIGATING": {"cap": 0, "floor": -30},
 }
 
@@ -28,7 +44,7 @@ LEVEL_THRESHOLDS = [
 @dataclass
 class Factor:
     id: str
-    group: str  # AV_DETECTIONS, REPUTATION_LISTS, DOMAIN_INFRA, BEHAVIOR, MITIGATING
+    group: str  # AV_DETECTIONS, REPUTATION_LISTS, DOMAIN_INFRA, BEHAVIOR, GEOLOCATION, MITIGATING
     type: str   # indicator, mitigating, neutral, conflict
     severity: str  # info, low, medium, high, critical
     points: int  # contribution before or after group capping
@@ -41,7 +57,7 @@ class Factor:
 @dataclass
 class NormalizedEvidence:
     target: str
-    target_type: str = "url"  # url, hash, file
+    target_type: str = "url"  # url, hash, file, email
     now: Optional[datetime] = None
 
     # Source data structures
@@ -57,6 +73,7 @@ class NormalizedEvidence:
     file_metadata: Optional[Dict[str, Any]] = None
     ip_reputation: Optional[Dict[str, Any]] = None
     known_good: Optional[Dict[str, Any]] = None
+    geolocation: Optional[Any] = None
 
 
 @dataclass
@@ -422,11 +439,150 @@ def evaluate(evidence: NormalizedEvidence, now: Optional[datetime] = None) -> Ri
                     evidence_ref={"prevalence": "high"}
                 ))
 
+    # 5b. GEOLOCATION group evaluation
+    geo_factors: List[Factor] = []
+    if evidence.geolocation:
+        geo_items: List[Dict[str, Any]] = []
+        if isinstance(evidence.geolocation, list):
+            for item in evidence.geolocation:
+                if isinstance(item, dict):
+                    geo_items.append(item)
+                elif hasattr(item, "model_dump"):
+                    geo_items.append(item.model_dump())
+        elif isinstance(evidence.geolocation, dict):
+            if "geo_results" in evidence.geolocation and isinstance(evidence.geolocation["geo_results"], list):
+                for item in evidence.geolocation["geo_results"]:
+                    if isinstance(item, dict):
+                        geo_items.append(item)
+                    elif hasattr(item, "model_dump"):
+                        geo_items.append(item.model_dump())
+            else:
+                geo_items.append(evidence.geolocation)
+        elif hasattr(evidence.geolocation, "model_dump"):
+            geo_items.append(evidence.geolocation.model_dump())
+
+        if geo_items:
+            has_any_source_data = True
+            source_groups_present.add("geolocation")
+
+        # 1. Tor exit node: +15
+        has_tor = any(g.get("is_tor") for g in geo_items)
+        if has_tor:
+            tor_ips = [g.get("ip") for g in geo_items if g.get("is_tor")]
+            geo_factors.append(Factor(
+                id="geo_tor_exit_node",
+                group="GEOLOCATION",
+                type="indicator",
+                severity="critical",
+                points=15,
+                title="Tor Exit Node Origin",
+                description="Email or indicator traffic originated from or routed through a confirmed Tor network exit relay.",
+                source="IP Geolocation Intelligence",
+                evidence_ref={"tor_ips": tor_ips}
+            ))
+
+        # 2. Public VPN / Proxy: +5
+        has_vpn_proxy = any(
+            (g.get("is_vpn") or g.get("is_proxy"))
+            for g in geo_items
+        )
+        if has_vpn_proxy:
+            vpn_ips = [g.get("ip") for g in geo_items if (g.get("is_vpn") or g.get("is_proxy"))]
+            geo_factors.append(Factor(
+                id="geo_vpn_proxy",
+                group="GEOLOCATION",
+                type="indicator",
+                severity="medium",
+                points=5,
+                title="Anonymous VPN or Proxy Infrastructure",
+                description="Originating transmission IP is associated with a commercial VPN or anonymizing proxy service.",
+                source="IP Geolocation Intelligence",
+                evidence_ref={"vpn_ips": vpn_ips}
+            ))
+
+        # 3. Datacenter IP for consumer-facing sender: +5
+        CONSUMER_DOMAINS = {
+            "gmail.com", "googlemail.com", "yahoo.com", "ymail.com", "hotmail.com",
+            "outlook.com", "live.com", "msn.com", "icloud.com", "me.com", "mac.com",
+            "aol.com", "proton.me", "protonmail.com", "zoho.com", "mail.com", "gmx.com"
+        }
+        has_datacenter_consumer = False
+        dc_ips = []
+        for g in geo_items:
+            if g.get("is_datacenter"):
+                is_consumer = bool(
+                    g.get("consumer_sender")
+                    or g.get("is_consumer_sender")
+                    or any(
+                        (g.get("sender_domain") or "").lower().endswith(dom)
+                        or (g.get("from_address") or "").lower().endswith(dom)
+                        or (evidence.target or "").lower().endswith(dom)
+                        for dom in CONSUMER_DOMAINS
+                    )
+                )
+                if is_consumer:
+                    has_datacenter_consumer = True
+                    dc_ips.append(g.get("ip"))
+
+        if has_datacenter_consumer:
+            geo_factors.append(Factor(
+                id="geo_datacenter_sender",
+                group="GEOLOCATION",
+                type="indicator",
+                severity="medium",
+                points=5,
+                title="Datacenter Hosting IP for Consumer Sender",
+                description="Consumer-facing sender originated from a cloud or datacenter hosting provider rather than legitimate residential or webmail infrastructure.",
+                source="Infrastructure Telemetry",
+                evidence_ref={"datacenter_ips": dc_ips}
+            ))
+
+        # 4. Country mismatch with sender domain TLD: +3
+        COUNTRY_TLD_MAP = {
+            "uk": "GB", "de": "DE", "fr": "FR", "ca": "CA", "jp": "JP",
+            "au": "AU", "br": "BR", "in": "IN", "cn": "CN", "ru": "RU",
+            "it": "IT", "es": "ES", "nl": "NL", "ch": "CH", "se": "SE",
+            "no": "NO", "pl": "PL"
+        }
+        has_country_mismatch = False
+        mismatch_evidence = []
+        for g in geo_items:
+            if g.get("country_mismatch") or g.get("country_tld_mismatch"):
+                has_country_mismatch = True
+                mismatch_evidence.append({"ip": g.get("ip"), "country": g.get("country")})
+            else:
+                sender_dom = (g.get("sender_domain") or g.get("sender_tld") or "").lower()
+                ip_country = (g.get("country_code") or "").upper()
+                if sender_dom and ip_country:
+                    tld = sender_dom.split(".")[-1]
+                    if tld in COUNTRY_TLD_MAP and COUNTRY_TLD_MAP[tld] != ip_country:
+                        has_country_mismatch = True
+                        mismatch_evidence.append({
+                            "ip": g.get("ip"),
+                            "ip_country": ip_country,
+                            "expected_country": COUNTRY_TLD_MAP[tld],
+                            "tld": tld,
+                        })
+
+        if has_country_mismatch:
+            geo_factors.append(Factor(
+                id="geo_country_tld_mismatch",
+                group="GEOLOCATION",
+                type="indicator",
+                severity="low",
+                points=3,
+                title="Sender IP Country Mismatch with Domain TLD",
+                description="Originating IP geolocated country does not match sender domain country-code TLD.",
+                source="Geo-Forensic Correlation",
+                evidence_ref={"mismatches": mismatch_evidence}
+            ))
+
     # Add factors from groups into main list
     factors.extend(rep_factors)
     factors.extend(infra_factors)
     factors.extend(behavior_factors)
     factors.extend(mitigating_factors)
+    factors.extend(geo_factors)
 
     # 6. Apply group caps and compute score
     # AV_DETECTIONS group:
@@ -446,6 +602,10 @@ def evaluate(evidence: NormalizedEvidence, now: Optional[datetime] = None) -> Ri
     beh_raw = sum(f.points for f in factors if f.group == "BEHAVIOR")
     beh_points = max(0, min(beh_raw, EVIDENCE_GROUPS["BEHAVIOR"]["cap"]))
 
+    # GEOLOCATION group: cap +15
+    geo_raw = sum(f.points for f in factors if f.group == "GEOLOCATION")
+    geo_points = max(0, min(geo_raw, EVIDENCE_GROUPS["GEOLOCATION"]["cap"]))
+
     # MITIGATING group: floor -30
     mit_raw = sum(f.points for f in factors if f.group == "MITIGATING")
     mit_points = min(0, max(mit_raw, EVIDENCE_GROUPS["MITIGATING"]["floor"]))
@@ -455,11 +615,30 @@ def evaluate(evidence: NormalizedEvidence, now: Optional[datetime] = None) -> Ri
         "REPUTATION_LISTS": rep_points,
         "DOMAIN_INFRA": infra_points,
         "BEHAVIOR": beh_points,
+        "GEOLOCATION": geo_points,
         "MITIGATING": mit_points,
     }
 
-    raw_sum = av_points + rep_points + infra_points + beh_points + mit_points
-    score = max(0, min(100, raw_sum))
+    base_raw_sum = av_points + rep_points + infra_points + beh_points + mit_points
+    base_score = max(0, min(100, base_raw_sum))
+
+    # Rule: if AV_DETECTIONS >= 3, geolocation alone must not push score past the next level threshold
+    av_count = vt_malicious
+    if av_count >= 3 and geo_points > 0:
+        current_tier_ceiling = None
+        for low_bound, high_bound, _ in LEVEL_THRESHOLDS:
+            if low_bound <= base_score <= high_bound:
+                current_tier_ceiling = high_bound
+                break
+        candidate_score = base_score + geo_points
+        if current_tier_ceiling is not None:
+            score = min(candidate_score, current_tier_ceiling)
+        else:
+            score = candidate_score
+    else:
+        score = base_score + geo_points
+
+    score = max(0, min(100, score))
 
     # 7. Confidence Calculation
     # Confidence represents evidence quality / depth, NOT danger level.

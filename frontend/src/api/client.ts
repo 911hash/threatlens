@@ -2,6 +2,7 @@ import type {
   AlertItem,
   CompareResult,
   DemoInfo,
+  HealthConfig,
   HealthStatus,
   Scan,
   WatchlistItem,
@@ -31,6 +32,11 @@ export const api = {
   async getHealth(): Promise<HealthStatus> {
     const res = await fetch(`${API_BASE}/api/health`);
     return handleResponse<HealthStatus>(res);
+  },
+
+  async getHealthConfig(): Promise<HealthConfig> {
+    const res = await fetch(`${API_BASE}/api/health/config`);
+    return handleResponse<HealthConfig>(res);
   },
 
   async getDemoInfo(): Promise<DemoInfo> {
@@ -72,6 +78,16 @@ export const api = {
     const formData = new FormData();
     formData.append('file', file);
     const res = await fetch(`${API_BASE}/api/analyze/file`, {
+      method: 'POST',
+      body: formData,
+    });
+    return handleResponse<Scan>(res);
+  },
+
+  async analyzeEmail(file: File): Promise<Scan> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/api/analyze/email`, {
       method: 'POST',
       body: formData,
     });
@@ -146,5 +162,35 @@ export const api = {
       method: 'POST',
     });
     return handleResponse(res);
+  },
+
+  // Gmail OAuth & Inbox API
+  async getGmailStatus(): Promise<{ connected: boolean; email: string | null; connected_at?: string; last_sync_at?: string }> {
+    const res = await fetch(`${API_BASE}/api/auth/gmail/status`);
+    return handleResponse(res);
+  },
+
+  async disconnectGmail(): Promise<{ connected: boolean; disconnected: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/api/auth/gmail/disconnect`, {
+      method: 'POST',
+    });
+    return handleResponse(res);
+  },
+
+  async getInbox(page = 1, limit = 50): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/api/inbox?page=${page}&limit=${limit}`);
+    return handleResponse<any[]>(res);
+  },
+
+  async syncInbox(): Promise<{ status: string; synced_count: number; last_sync_at?: string }> {
+    const res = await fetch(`${API_BASE}/api/inbox/sync`, {
+      method: 'POST',
+    });
+    return handleResponse(res);
+  },
+
+  async getInboxMessageDetail(gmailId: string): Promise<Scan> {
+    const res = await fetch(`${API_BASE}/api/inbox/${encodeURIComponent(gmailId)}`);
+    return handleResponse<Scan>(res);
   },
 };

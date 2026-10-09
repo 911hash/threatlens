@@ -75,7 +75,7 @@ def test_case_3_vt_20_malicious_and_3_reputation_lists_agree():
 def test_case_4_phishing_url_new_domain_vt_zero():
     """4. Phishing URL on newly registered domain, VT 0 detections => HIGH via reputation + infra groups"""
     evidence = NormalizedEvidence(
-        target="http://apple-login-security-update.example.xyz/auth",
+        target="http://portal-login-security-update.example.xyz/auth",
         target_type="url",
         virustotal={"malicious": 0, "suspicious": 0, "harmless": 40, "total": 40},
         openphish={"flagged": True},

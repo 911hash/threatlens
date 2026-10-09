@@ -1,0 +1,14 @@
+From: security@example-corp.test
+To: victim@example.test
+Subject: Official Security Update
+Date: Fri, 09 Oct 2026 10:00:00 +0000
+Message-ID: <valid-12345@example-corp.test>
+Authentication-Results: mx.mail-receiver.example.org;
+       dkim=pass header.i=@example-corp.test header.s=202601;
+       spf=pass (mail-receiver.example.org: domain of security@example-corp.test designates 192.0.2.1 as permitted sender) smtp.mailfrom=security@example-corp.test;
+       dmarc=pass (p=REJECT sp=REJECT) header.from=example-corp.test;
+       arc=pass
+Received: from mail.example-corp.test ([192.0.2.1]) by mx.mail-receiver.example.org with ESMTPS; Fri, 09 Oct 2026 10:00:00 +0000
+Content-Type: text/plain
+
+Your Example Corp account security settings are up to date.

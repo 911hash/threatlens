@@ -1,12 +1,12 @@
 import React from 'react';
-import { Globe, Hash, FileText, Server } from 'lucide-react';
+import { Globe, Hash, FileText, Server, Mail } from 'lucide-react';
 import { useDefang } from '../../design/DefangContext';
 import { CopyButton } from '../primitives/CopyButton';
 import { Badge } from '../primitives/Badge';
 
 export interface IndicatorChipProps {
   indicator: string;
-  type?: 'url' | 'hash' | 'file' | 'ip' | string;
+  type?: 'url' | 'hash' | 'file' | 'ip' | 'email' | string;
   source?: string;
   size?: 'xs' | 'sm';
   showCopy?: boolean;
@@ -29,6 +29,7 @@ export const IndicatorChip: React.FC<IndicatorChipProps> = ({
     hash: <Hash className="w-3 h-3 text-purple-400" />,
     file: <FileText className="w-3 h-3 text-amber-400" />,
     ip: <Server className="w-3 h-3 text-emerald-400" />,
+    email: <Mail className="w-3 h-3 text-emerald-400" />,
   }[type.toLowerCase()] || <Globe className="w-3 h-3 text-blue-400" />;
 
   const isXs = size === 'xs';

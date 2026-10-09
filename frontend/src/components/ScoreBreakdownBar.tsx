@@ -22,6 +22,7 @@ export const ScoreBreakdownBar: React.FC<ScoreBreakdownBarProps> = ({
   const rep = b['REPUTATION_LISTS'] || 0;
   const infra = b['DOMAIN_INFRA'] || 0;
   const beh = b['BEHAVIOR'] || 0;
+  const geo = b['GEOLOCATION'] || 0;
   const mit = b['MITIGATING'] || 0;
 
   const groups = [
@@ -34,6 +35,7 @@ export const ScoreBreakdownBar: React.FC<ScoreBreakdownBarProps> = ({
       text: 'text-red-400',
       border: 'border-red-500/30',
       activeRing: 'ring-2 ring-red-500/80',
+      tooltip: 'Capped at 50 to prevent double-counting across multi-engine scanners.',
     },
     {
       id: 'REPUTATION_LISTS',
@@ -44,6 +46,7 @@ export const ScoreBreakdownBar: React.FC<ScoreBreakdownBarProps> = ({
       text: 'text-orange-400',
       border: 'border-orange-500/30',
       activeRing: 'ring-2 ring-orange-500/80',
+      tooltip: 'Capped at 35 to prevent double-counting across feed blocklists.',
     },
     {
       id: 'DOMAIN_INFRA',
@@ -54,6 +57,7 @@ export const ScoreBreakdownBar: React.FC<ScoreBreakdownBarProps> = ({
       text: 'text-amber-400',
       border: 'border-amber-500/30',
       activeRing: 'ring-2 ring-amber-500/80',
+      tooltip: 'Capped at 20. Evaluates domain age, entropy, and WHOIS flags.',
     },
     {
       id: 'BEHAVIOR',
@@ -64,11 +68,23 @@ export const ScoreBreakdownBar: React.FC<ScoreBreakdownBarProps> = ({
       text: 'text-purple-400',
       border: 'border-purple-500/30',
       activeRing: 'ring-2 ring-purple-500/80',
+      tooltip: 'Capped at 30. Evaluates heuristics, execution behaviors, and anomalies.',
+    },
+    {
+      id: 'GEOLOCATION',
+      label: 'Infrastructure & Geo',
+      value: geo,
+      cap: 15,
+      color: 'bg-cyan-500',
+      text: 'text-cyan-400',
+      border: 'border-cyan-500/30',
+      activeRing: 'ring-2 ring-cyan-500/80',
+      tooltip: 'Capped at 15. Evaluates Tor exit nodes, VPN/proxy relays, datacenter origins, and country TLD mismatches.',
     },
   ];
 
   return (
-    <div className="p-4 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
+    <div id="score-breakdown-container" className="p-4 rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] font-mono">
@@ -92,9 +108,8 @@ export const ScoreBreakdownBar: React.FC<ScoreBreakdownBarProps> = ({
           return (
             <div
               key={g.id}
-              className={`${g.color} h-full transition-all duration-200 cursor-pointer ${
-                isHovered ? 'brightness-125 opacity-100 scale-y-110' : 'opacity-90'
-              }`}
+              className={`${g.color} h-full transition-all duration-200 cursor-pointer ${isHovered ? 'brightness-125 opacity-100 scale-y-110' : 'opacity-90'
+                }`}
               style={{ width: `${Math.min(100, (g.value / 100) * 100)}%` }}
               onMouseEnter={() => onHoverGroup?.(g.id)}
               onMouseOver={() => onHoverGroup?.(g.id)}
@@ -106,7 +121,7 @@ export const ScoreBreakdownBar: React.FC<ScoreBreakdownBarProps> = ({
       </div>
 
       {/* Group Pills & Breakdown Chips with Ceilings */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 pt-1 text-[11px]">
         {groups.map((g) => {
           const isHovered = hoveredGroup === g.id;
           return (
@@ -117,14 +132,13 @@ export const ScoreBreakdownBar: React.FC<ScoreBreakdownBarProps> = ({
               onMouseOver={() => onHoverGroup?.(g.id)}
               onPointerEnter={() => onHoverGroup?.(g.id)}
               onMouseLeave={() => onHoverGroup?.(null)}
-              className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between ${
-                isHovered
+              className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between ${isHovered
                   ? `bg-[var(--bg-elevated)] ${g.border} ${g.activeRing} shadow-sm`
                   : 'bg-[var(--bg-inset)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]'
-              }`}
+                }`}
             >
               <span className="text-[var(--text-secondary)] truncate font-medium">{g.label}</span>
-              <Tooltip content={`Capped at ${g.cap} to prevent double-counting.`} position="top">
+              <Tooltip content={g.tooltip} position="top">
                 <span className={`font-mono font-bold ml-1.5 shrink-0 flex items-center gap-1 ${g.value > 0 ? g.text : 'text-[var(--text-tertiary)]'}`}>
                   +{g.value}
                   <span className="text-[10px] text-[var(--text-tertiary)] font-normal">/ {g.cap}</span>
@@ -141,11 +155,10 @@ export const ScoreBreakdownBar: React.FC<ScoreBreakdownBarProps> = ({
         data-group-id="MITIGATING"
         onMouseEnter={() => onHoverGroup?.('MITIGATING')}
         onMouseLeave={() => onHoverGroup?.(null)}
-        className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between text-xs ${
-          hoveredGroup === 'MITIGATING'
+        className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between text-xs ${hoveredGroup === 'MITIGATING'
             ? 'bg-emerald-500/15 border-emerald-500/40 ring-2 ring-emerald-500/80 shadow-sm'
             : 'bg-emerald-500/5 border-emerald-500/20 hover:border-emerald-500/30'
-        }`}
+          }`}
       >
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
