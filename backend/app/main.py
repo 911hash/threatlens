@@ -22,30 +22,30 @@ from fastapi.responses import JSONResponse
 
 from .database import Base, SessionLocal, engine, run_migrations
 from .models import Alert, Scan, WatchlistItem, generate_id
+import logging
 from .routes import analyze, auth, demo, forensics, history, inbox, watchlist
 from .schemas import HealthConfigResponse, HealthResponse
-from .session import COOKIE_NAME, SESSION_COOKIE_MAX_AGE, get_or_create_session_id
+from .session import COOKIE_NAME, SESSION_COOKIE_MAX_AGE, get_or_create_session_id, set_session_cookie
 from .services.gmail_worker import shutdown_gmail_polling_worker, start_gmail_polling_worker
 from apscheduler.schedulers.background import BackgroundScheduler
 from .services.url_analysis import refang_target, trace_url_redirects, validate_url_syntax
 from .services.virustotal import VT_API_KEY, lookup_virustotal_hash, lookup_virustotal_url
 from .risk_engine import NormalizedEvidence, evaluate
 
+logger = logging.getLogger(__name__)
+
 # Create tables and run auto-migrations
 Base.metadata.create_all(bind=engine)
 run_migrations()
 
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
-# Parse comma-separated origins if provided
-allowed_origins_set = set()
-for org in FRONTEND_ORIGIN.split(","):
-    clean_org = org.strip()
-    if clean_org:
-        allowed_origins_set.add(clean_org)
-allowed_origins_set.add("http://localhost:5173")
-allowed_origins_set.add("http://127.0.0.1:5173")
-allowed_origins_set.add("http://localhost:3000")
-allow_origins_list = list(allowed_origins_set)
+frontend_origin_env = os.getenv("FRONTEND_ORIGIN")
+if not frontend_origin_env or not frontend_origin_env.strip():
+    logger.warning("FRONTEND_ORIGIN is not set. Defaulting to ['http://localhost:5173'].")
+    allow_origins_list = ["http://localhost:5173"]
+else:
+    origins = [org.strip() for org in frontend_origin_env.split(",") if org.strip()]
+    allow_origins_list = origins if origins else ["http://localhost:5173"]
+
 
 WATCHLIST_INTERVAL_MINUTES = int(os.getenv("WATCHLIST_INTERVAL_MINUTES", "15"))
 
@@ -128,16 +128,9 @@ async def session_cookie_middleware(request: Request, call_next):
 
     response = await call_next(request)
 
-    # Set cookie on outgoing response if not present in request cookies and not dev header override
-    if not had_cookie:
-        response.set_cookie(
-            key=COOKIE_NAME,
-            value=session_id,
-            max_age=SESSION_COOKIE_MAX_AGE,
-            httponly=True,
-            samesite="lax",
-            path="/",
-        )
+    # Attach/refresh tl_session cookie on outgoing response unless dev header override
+    if not header_val:
+        set_session_cookie(response, session_id, request)
     return response
 
 

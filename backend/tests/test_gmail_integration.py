@@ -233,6 +233,64 @@ def test_oauth_callback_exchanges_code_and_stores_encrypted_token(client, db_ses
     assert data["email"] == "analyst@gmail.com"
 
 
+def test_oauth_state_carries_session_id(db_session):
+    """
+    Assert /start puts the session_id in the state param.
+    Assert /callback uses the state's session_id even with no cookie present.
+    """
+    import urllib.parse
+    import uuid
+
+    custom_session_id = f"custom_sess_{uuid.uuid4().hex[:8]}"
+    start_client = TestClient(app, cookies=None)
+
+    with patch.dict("os.environ", {
+        "GOOGLE_CLIENT_ID": "mock-client-id",
+        "GOOGLE_CLIENT_SECRET": "mock-client-secret",
+    }):
+        resp_start = start_client.get(
+            "/api/auth/gmail/start",
+            headers={"X-Session-ID": custom_session_id},
+            follow_redirects=False,
+        )
+        assert resp_start.status_code in (302, 307)
+        location = resp_start.headers["location"]
+        assert "state=" in location
+
+        parsed = urllib.parse.urlparse(location)
+        query_params = urllib.parse.parse_qs(parsed.query)
+        assert "state" in query_params
+        state_param = query_params["state"][0]
+        assert state_param.startswith(f"{custom_session_id}:")
+
+    # Call /callback with a fresh client that has NO cookies and NO session headers
+    fresh_callback_client = TestClient(app, cookies=None)
+    mock_creds = MagicMock()
+    mock_creds.refresh_token = "1//mock_refresh_token_state_session"
+    mock_creds.token = "ya29.mock_access_token_state"
+
+    with patch("app.routes.auth.exchange_code", return_value=mock_creds), \
+         patch("app.routes.auth.fetch_account_profile_email", return_value="state_isolated@gmail.com"):
+
+        resp_cb = fresh_callback_client.get(
+            f"/api/auth/gmail/callback?code=mock_code&state={state_param}",
+            follow_redirects=False,
+        )
+        assert resp_cb.status_code in (302, 307)
+        assert "/inbox?connected=true" in resp_cb.headers["location"]
+
+        # Assert account row was created under the state's session_id
+        account = db_session.query(GmailAccount).filter(GmailAccount.user_session_id == custom_session_id).first()
+        assert account is not None
+        assert account.email_address == "state_isolated@gmail.com"
+        assert account.is_active is True
+
+        # Assert redirect response set cookie with custom_session_id
+        set_cookie = resp_cb.headers.get("set-cookie", "")
+        assert f"tl_session={custom_session_id}" in set_cookie
+
+
+
 # =====================================================================
 # 2. GMAIL SYNC: 3 MOCKED MESSAGES -> 3 SCANS
 # =====================================================================

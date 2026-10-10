@@ -151,3 +151,35 @@ def test_missing_cookie_creates_new_session():
     assert "tl_session=" in set_cookie
     assert "httponly" in set_cookie.lower()
     assert "samesite=lax" in set_cookie.lower()
+
+
+def test_session_cookie_attributes():
+    """
+    Assert the Set-Cookie response header contains 'SameSite=None' and 'Secure'
+    when the request is HTTPS or behind an HTTPS reverse proxy.
+    """
+    # 1. Direct HTTPS request
+    https_client = TestClient(app, base_url="https://testserver", cookies=None)
+    resp_https = https_client.get("/api/health")
+    assert resp_https.status_code == 200
+    set_cookie_https = resp_https.headers.get("set-cookie", "")
+    assert "tl_session=" in set_cookie_https
+    assert "SameSite=None" in set_cookie_https
+    assert "Secure" in set_cookie_https
+    assert "HttpOnly" in set_cookie_https
+
+    # 2. Behind HTTPS reverse proxy (e.g. Render / Cloudflare with X-Forwarded-Proto)
+    http_client = TestClient(app, base_url="http://testserver", cookies=None)
+    resp_proxy = http_client.get("/api/health", headers={"x-forwarded-proto": "https"})
+    assert resp_proxy.status_code == 200
+    set_cookie_proxy = resp_proxy.headers.get("set-cookie", "")
+    assert "SameSite=None" in set_cookie_proxy
+    assert "Secure" in set_cookie_proxy
+
+    # 3. Local dev over plain HTTP keeps SameSite=lax and Secure=False
+    resp_http = http_client.get("/api/health")
+    assert resp_http.status_code == 200
+    set_cookie_http = resp_http.headers.get("set-cookie", "")
+    assert "samesite=lax" in set_cookie_http.lower()
+    assert "secure" not in set_cookie_http.lower()
+

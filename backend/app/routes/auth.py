@@ -7,6 +7,7 @@ Per-browser multi-user session isolation via session cookies.
 from datetime import datetime
 import logging
 import os
+import secrets
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import GmailAccount, generate_id
-from ..session import get_or_create_session_id
+from ..session import extract_session_id_from_state, get_or_create_session_id, set_session_cookie
 from ..services.gmail_oauth import (
     decrypt_token,
     encrypt_token,
@@ -37,7 +38,7 @@ def start_gmail_oauth(request: Request, response: Response):
     """
     Start OAuth flow by redirecting user to Google's consent screen.
     Requires Google Client ID & Secret configured in environment.
-    Stores session_id associated with OAuth state.
+    Stores session_id associated with OAuth state and carries session_id in state param.
     """
     client_id = os.getenv("GOOGLE_CLIENT_ID", "")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
@@ -54,10 +55,12 @@ def start_gmail_oauth(request: Request, response: Response):
     session_id = get_or_create_session_id(request, response)
 
     try:
-        auth_url, state_out = get_authorization_url()
+        random_nonce = secrets.token_hex(16)
+        state_payload = f"{session_id}:{random_nonce}"
+        auth_url, state_out = get_authorization_url(state=state_payload)
         store_state_session(state_out, session_id)
         redirect_resp = RedirectResponse(url=auth_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-        get_or_create_session_id(request, redirect_resp)
+        set_session_cookie(redirect_resp, session_id, request)
         return redirect_resp
     except Exception as e:
         logger.exception("Failed to build authorization URL: %s", e)
@@ -79,10 +82,21 @@ def gmail_oauth_callback(
     """
     Exchange authorization code for credentials, store encrypted refresh token in DB,
     and redirect user back to frontend /inbox.
+    Uses state parameter session as authoritative fallback before reading cookies.
     """
+    extracted_state_session = extract_session_id_from_state(state)
+    session_id = (
+        extracted_state_session
+        or (get_state_session(state) if state else None)
+        or get_or_create_session_id(request, response)
+    )
+    request.state.session_id = session_id
+
     if error:
         logger.warning("Google OAuth error callback: %s", error)
-        return RedirectResponse(url=f"{FRONTEND_ORIGIN}/inbox?error={error}")
+        err_resp = RedirectResponse(url=f"{FRONTEND_ORIGIN}/inbox?error={error}")
+        set_session_cookie(err_resp, session_id, request)
+        return err_resp
 
     if not code:
         raise HTTPException(
@@ -94,9 +108,9 @@ def gmail_oauth_callback(
         credentials = exchange_code(code, state=state)
     except Exception as e:
         logger.exception("Token exchange failed: %s", e)
-        return RedirectResponse(url=f"{FRONTEND_ORIGIN}/inbox?error=token_exchange_failed")
-
-    session_id = (get_state_session(state) if state else None) or get_or_create_session_id(request, response)
+        err_resp = RedirectResponse(url=f"{FRONTEND_ORIGIN}/inbox?error=token_exchange_failed")
+        set_session_cookie(err_resp, session_id, request)
+        return err_resp
 
     refresh_token_val = credentials.refresh_token
     if not refresh_token_val:
@@ -136,8 +150,9 @@ def gmail_oauth_callback(
 
     db.commit()
     redirect_resp = RedirectResponse(url=f"{FRONTEND_ORIGIN}/inbox?connected=true")
-    get_or_create_session_id(request, redirect_resp)
+    set_session_cookie(redirect_resp, session_id, request)
     return redirect_resp
+
 
 
 @router.get("/status")
