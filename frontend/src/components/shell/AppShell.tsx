@@ -29,6 +29,8 @@ const InvestigationsPage = React.lazy(() => import('../../pages/HistoryPage').th
 const ResultPage = React.lazy(() => import('../../pages/ResultPage').then(m => ({ default: m.ResultPage })));
 const ComparePage = React.lazy(() => import('../../pages/ComparePage').then(m => ({ default: m.ComparePage })));
 const WatchlistPage = React.lazy(() => import('../../pages/WatchlistPage').then(m => ({ default: m.WatchlistPage })));
+const ForensicsPage = React.lazy(() => import('../../pages/ForensicsPage').then(m => ({ default: m.ForensicsPage })));
+const CaseDetailPage = React.lazy(() => import('../../pages/CaseDetailPage').then(m => ({ default: m.CaseDetailPage })));
 const AlertsPage = React.lazy(() => import('../../pages/AlertsPage').then(m => ({ default: m.AlertsPage })));
 const SettingsPage = React.lazy(() => import('../../pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 const DesignSystemPage = React.lazy(() => import('../../pages/DesignSystemPage').then(m => ({ default: m.DesignSystemPage })));
@@ -241,6 +243,24 @@ export const AppShell: React.FC = () => {
                   element={
                     <Suspense fallback={<WatchlistSkeleton />}>
                       <WatchlistPage />
+                    </Suspense>
+                  }
+                />
+
+                {/* Forensics & Case Management */}
+                <Route
+                  path="/forensics"
+                  element={
+                    <Suspense fallback={<InvestigationsSkeleton />}>
+                      <ForensicsPage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/cases/:id"
+                  element={
+                    <Suspense fallback={<ReportSkeleton />}>
+                      <CaseDetailPage />
                     </Suspense>
                   }
                 />

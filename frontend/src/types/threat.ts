@@ -299,3 +299,131 @@ export interface DemoInfo {
     description: string;
   }>;
 }
+
+// =====================================================================
+// PHASE 10: FORENSIC PLATFORM TYPES
+// =====================================================================
+
+export type GraphNodeType =
+  | 'Email'
+  | 'Sender'
+  | 'Recipient'
+  | 'IP'
+  | 'Domain'
+  | 'URL'
+  | 'AttachmentHash'
+  | 'ASN'
+  | string;
+
+export type GraphEdgeType =
+  | 'SENT_FROM'
+  | 'SENT_TO'
+  | 'RESOLVES_TO'
+  | 'CONTAINS'
+  | 'REGISTERED_AT'
+  | 'HOSTED_IN'
+  | string;
+
+export interface GraphNode {
+  id: string;
+  tenant_id: string;
+  node_type: GraphNodeType;
+  value: string;
+  display_value: string;
+  metadata?: Record<string, any>;
+  created_at?: string;
+  last_seen_at?: string;
+}
+
+export interface GraphEdge {
+  id: string;
+  tenant_id: string;
+  from_node_id: string;
+  to_node_id: string;
+  edge_type: GraphEdgeType;
+  metadata?: Record<string, any>;
+  created_at?: string;
+  last_seen_at?: string;
+}
+
+export interface GraphPivot {
+  node: GraphNode;
+  total_connections: number;
+  grouped: Record<string, GraphNode[]>;
+  counts: Record<string, number>;
+  edges: GraphEdge[];
+}
+
+export interface ForensicEvent {
+  id: string;
+  tenant_id: string;
+  scan_id: string;
+  event_timestamp: string;
+  category:
+    | 'domain_registered'
+    | 'certificate_issued'
+    | 'email_sent'
+    | 'email_delivered'
+    | 'url_first_seen'
+    | 'attachment_first_seen'
+    | string;
+  description: string;
+  source: string;
+  evidence_ref: string;
+}
+
+export interface CaseItem {
+  id: string;
+  tenant_id: string;
+  case_id: string;
+  scan_id: string;
+  added_at: string;
+  added_by: string;
+  scan?: {
+    id: string;
+    target: string;
+    target_type: string;
+    risk_score: number;
+    risk_level: string;
+    confidence: number;
+    timestamp?: string;
+    is_demo?: boolean;
+  };
+}
+
+export interface CaseComment {
+  id: string;
+  tenant_id: string;
+  case_id: string;
+  author: string;
+  body: string;
+  created_at: string;
+}
+
+export interface CaseAudit {
+  id: string;
+  tenant_id: string;
+  case_id: string;
+  action: string;
+  target: string;
+  note?: string | null;
+  actor: string;
+  timestamp: string;
+}
+
+export interface Case {
+  id: string;
+  tenant_id: string;
+  title: string;
+  description: string;
+  status: 'open' | 'resolved' | 'escalated';
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string | null;
+  item_count?: number;
+  comment_count?: number;
+  items?: CaseItem[];
+  comments?: CaseComment[];
+  audit?: CaseAudit[];
+}
+

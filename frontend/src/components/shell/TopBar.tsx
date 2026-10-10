@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, matchPath } from 'react-router-dom';
 import { Search, Eye, EyeOff, Sun, Moon, RefreshCw } from 'lucide-react';
 import { useTheme } from '../../design/ThemeContext';
 import { useDefang } from '../../design/DefangContext';
@@ -76,6 +76,16 @@ export const TopBar: React.FC = () => {
     }
     if (p.startsWith('/settings')) {
       return [...base, { label: 'Settings' }];
+    }
+    if (p.startsWith('/forensics')) {
+      return [...base, { label: 'Forensics' }];
+    }
+    if (matchPath('/cases/:id', p) || p.startsWith('/cases')) {
+      return [
+        ...base,
+        { label: 'Forensics', onClick: () => navigate('/forensics') },
+        { label: 'Case Details' },
+      ];
     }
     if (p.startsWith('/design-system')) {
       return [...base, { label: 'Design System' }];

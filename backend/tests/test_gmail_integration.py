@@ -475,21 +475,33 @@ def test_disconnect_revokes_token_and_deletes_account(client, db_session):
 
 def test_sync_rate_limit_30_seconds(client, db_session):
     """POST /api/inbox/sync enforces 30s rate limit."""
-    # Create active account with recent last_sync_at
-    account = GmailAccount(
-        user_session_id="default_user",
-        email_address="rate_limit@gmail.com",
-        encrypted_refresh_token=encrypt_token("tok_rate_limit"),
-        last_sync_at=datetime.utcnow() - timedelta(seconds=10),
-        is_active=True,
-    )
-    db_session.add(account)
-    db_session.commit()
+    active_account = db_session.query(GmailAccount).filter(GmailAccount.is_active == True).first()
+    created = False
+    old_sync = None
+    if active_account:
+        old_sync = active_account.last_sync_at
+        active_account.last_sync_at = datetime.utcnow() - timedelta(seconds=10)
+        db_session.commit()
+    else:
+        created = True
+        active_account = GmailAccount(
+            user_session_id="default_user",
+            email_address="rate_limit@gmail.com",
+            encrypted_refresh_token=encrypt_token("tok_rate_limit"),
+            last_sync_at=datetime.utcnow() - timedelta(seconds=10),
+            is_active=True,
+        )
+        db_session.add(active_account)
+        db_session.commit()
 
     resp = client.post("/api/inbox/sync")
     assert resp.status_code == 429
     assert resp.json()["error"]["code"] == "SYNC_RATE_LIMITED"
 
     # Cleanup
-    db_session.delete(account)
-    db_session.commit()
+    if created:
+        db_session.delete(active_account)
+        db_session.commit()
+    else:
+        active_account.last_sync_at = old_sync
+        db_session.commit()

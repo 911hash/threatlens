@@ -18,6 +18,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Briefcase,
 } from 'lucide-react';
 import type { Scan } from '../types/threat';
 import { VerdictGauge } from './VerdictGauge';
@@ -28,6 +29,7 @@ import { Badge } from './primitives/Badge';
 import { Modal } from './primitives/Modal';
 import { IndicatorChip } from './domain/IndicatorChip';
 import { useToast } from './primitives/Toast';
+import { AddToCaseModal } from './domain/AddToCaseModal';
 
 export interface VerdictHeaderProps {
   scan: Scan;
@@ -56,6 +58,7 @@ export const VerdictHeader: React.FC<VerdictHeaderProps> = ({
   const toast = useToast();
   const [isComparePickerOpen, setIsComparePickerOpen] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isAddToCaseOpen, setIsAddToCaseOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
   // Filter prior scans excluding current one
@@ -232,6 +235,18 @@ ${factorsMd || 'No notable factors recorded.'}
                   <span>Add to watchlist</span>
                 </>
               )}
+            </Button>
+
+            {/* Add to Case */}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsAddToCaseOpen(true)}
+              aria-label="Add to investigation case"
+              className="flex items-center gap-1.5"
+            >
+              <Briefcase className="w-3.5 h-3.5 text-purple-400" />
+              <span>Add to Case</span>
             </Button>
 
             {/* Compare Scans */}
@@ -434,6 +449,13 @@ ${factorsMd || 'No notable factors recorded.'}
           )}
         </div>
       </Modal>
+
+      <AddToCaseModal
+        isOpen={isAddToCaseOpen}
+        onClose={() => setIsAddToCaseOpen(false)}
+        scanId={scan.id}
+        scanTarget={scan.target}
+      />
     </div>
   );
 };

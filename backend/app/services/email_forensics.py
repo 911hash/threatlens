@@ -54,6 +54,7 @@ async def process_email_forensics(
     hash_only: bool = False,
     db: Optional[Session] = None,
     gmail_id: Optional[str] = None,
+    tenant_id: str = "default",
 ) -> Tuple[Scan, EmailAnalysisResponse]:
     """
     Forensically inspect in-memory raw RFC822 email bytes and persist scan.
@@ -598,6 +599,7 @@ async def process_email_forensics(
         "file_sha256": file_sha256,
         "file_size": total_size,
         "from_address": parse_result.from_address,
+        "to_addresses": parse_result.to_addresses,
         "reply_to": parse_result.reply_to,
         "date": parse_result.date,
         "subject": parse_result.subject,
@@ -637,6 +639,11 @@ async def process_email_forensics(
         db.add(scan)
         db.commit()
         db.refresh(scan)
+        try:
+            from .graph_service import index_email
+            index_email(scan.id, tenant_id=tenant_id, db=db)
+        except Exception as e:
+            logger.exception("Failed to index email scan into artifact graph: %s", e)
 
     factors_response = [FactorResponse(**f) for f in factors_dict]
 

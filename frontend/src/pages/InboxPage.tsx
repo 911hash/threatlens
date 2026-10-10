@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   ChevronRight,
   Filter,
+  Briefcase,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { InboxItem, Scan, RiskLevel } from '../types/threat';
@@ -28,6 +29,7 @@ import { WorldMapMarker } from '../components/domain/WorldMapMarker';
 import { AIAnalysisSection } from '../components/domain/AIAnalysisSection';
 import { AttachmentList } from '../components/domain/AttachmentList';
 import { SanitizedBodyViewer } from '../components/domain/SanitizedBodyViewer';
+import { AddToCaseModal } from '../components/domain/AddToCaseModal';
 import { Button } from '../components/primitives/Button';
 import { Badge } from '../components/primitives/Badge';
 import { CopyButton } from '../components/primitives/CopyButton';
@@ -71,6 +73,7 @@ export const InboxPage: React.FC = () => {
   const [lastVisitTimestamp, setLastVisitTimestamp] = useState<number>(0);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [benignMarkedIds, setBenignMarkedIds] = useState<Set<string>>(new Set());
+  const [isAddToCaseOpen, setIsAddToCaseOpen] = useState(false);
 
   // 1. Initialize visit timestamp from localStorage
   useEffect(() => {
@@ -689,6 +692,16 @@ export const InboxPage: React.FC = () => {
                   <Button
                     variant="secondary"
                     size="md"
+                    onClick={() => setIsAddToCaseOpen(true)}
+                    className="flex items-center gap-2 font-medium"
+                  >
+                    <Briefcase className="w-4 h-4 text-purple-400" />
+                    <span>Add to Case</span>
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    size="md"
                     onClick={handleMarkBenign}
                     disabled={isMarkedBenign}
                     className="flex items-center gap-2 font-medium"
@@ -708,6 +721,15 @@ export const InboxPage: React.FC = () => {
           ) : null}
         </main>
       </div>
+
+      {selectedDetail && (
+        <AddToCaseModal
+          isOpen={isAddToCaseOpen}
+          onClose={() => setIsAddToCaseOpen(false)}
+          scanId={selectedDetail.id}
+          scanTarget={selectedDetail.target}
+        />
+      )}
     </div>
   );
 };

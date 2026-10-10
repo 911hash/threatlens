@@ -21,9 +21,10 @@ from fastapi.responses import JSONResponse
 
 from .database import Base, SessionLocal, engine
 from .models import Alert, Scan, WatchlistItem, generate_id
-from .routes import analyze, auth, demo, history, inbox, watchlist
+from .routes import analyze, auth, demo, forensics, history, inbox, watchlist
 from .schemas import HealthConfigResponse, HealthResponse
 from .services.gmail_worker import shutdown_gmail_polling_worker, start_gmail_polling_worker
+from apscheduler.schedulers.background import BackgroundScheduler
 from .services.url_analysis import refang_target, trace_url_redirects, validate_url_syntax
 from .services.virustotal import VT_API_KEY, lookup_virustotal_hash, lookup_virustotal_url
 from .risk_engine import NormalizedEvidence, evaluate
@@ -73,10 +74,24 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    # Retention purge job: runs on startup, then every 24 hours via APScheduler
+    retention_scheduler = BackgroundScheduler()
+    try:
+        from .services.retention import purge_expired
+        purge_expired()
+        retention_scheduler.add_job(purge_expired, "interval", hours=24)
+        retention_scheduler.start()
+    except Exception:
+        pass
+
     _background_task_handle = asyncio.create_task(_run_watchlist_rescan_loop())
     start_gmail_polling_worker()
     yield
     shutdown_gmail_polling_worker()
+    try:
+        retention_scheduler.shutdown(wait=False)
+    except Exception:
+        pass
     if _background_task_handle:
         _background_task_handle.cancel()
 
@@ -104,6 +119,7 @@ app.include_router(inbox.router)
 app.include_router(history.router)
 app.include_router(watchlist.router)
 app.include_router(demo.router)
+app.include_router(forensics.router)
 
 
 # Global Error Format Handler: {error: {code, message}}

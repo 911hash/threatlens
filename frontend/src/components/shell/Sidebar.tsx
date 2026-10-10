@@ -14,6 +14,7 @@ import {
   Sparkles,
   RotateCcw,
   Mail,
+  Network,
 } from 'lucide-react';
 import { useSidebar } from '../../context/SidebarContext';
 import { useThreatQuery } from '../../hooks/useThreatQuery';
@@ -76,6 +77,12 @@ export const Sidebar: React.FC = () => {
       label: 'Watchlist',
       icon: Bookmark,
       isActive: location.pathname.startsWith('/watchlist'),
+    },
+    {
+      to: '/forensics',
+      label: 'Forensics',
+      icon: Network,
+      isActive: location.pathname.startsWith('/forensics') || location.pathname.startsWith('/cases'),
     },
     {
       to: '/alerts',

@@ -1,7 +1,15 @@
 import type {
   AlertItem,
+  Case,
+  CaseAudit,
+  CaseComment,
+  CaseItem,
   CompareResult,
   DemoInfo,
+  ForensicEvent,
+  GraphEdge,
+  GraphNode,
+  GraphPivot,
   HealthConfig,
   HealthStatus,
   Scan,
@@ -193,4 +201,118 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/inbox/${encodeURIComponent(gmailId)}`);
     return handleResponse<Scan>(res);
   },
+
+  // =====================================================================
+  // PHASE 10: FORENSIC PLATFORM API
+  // =====================================================================
+
+  async getRecentGraphNodes(
+    limit = 20
+  ): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+    const res = await fetch(`${API_BASE}/api/graph/recent?limit=${limit}`);
+    return handleResponse(res);
+  },
+
+  async getNodeNeighbors(
+    nodeId: string,
+    depth = 1
+  ): Promise<{ root_id: string; nodes: GraphNode[]; edges: GraphEdge[] }> {
+    const res = await fetch(`${API_BASE}/api/graph/nodes/${encodeURIComponent(nodeId)}?depth=${depth}`);
+    return handleResponse(res);
+  },
+
+  async getNodePivot(nodeId: string): Promise<GraphPivot> {
+    const res = await fetch(`${API_BASE}/api/graph/pivot/${encodeURIComponent(nodeId)}`);
+    return handleResponse<GraphPivot>(res);
+  },
+
+  async lookupGraphNode(value: string, type?: string): Promise<GraphNode> {
+    const url = type
+      ? `${API_BASE}/api/graph/lookup?value=${encodeURIComponent(value)}&type=${encodeURIComponent(type)}`
+      : `${API_BASE}/api/graph/lookup?value=${encodeURIComponent(value)}`;
+    const res = await fetch(url);
+    return handleResponse<GraphNode>(res);
+  },
+
+  async getTimeline(
+    scanId: string,
+    forceRebuild = false
+  ): Promise<{ scan_id: string; events: ForensicEvent[] }> {
+    const url = forceRebuild
+      ? `${API_BASE}/api/timeline/${encodeURIComponent(scanId)}?force_rebuild=true`
+      : `${API_BASE}/api/timeline/${encodeURIComponent(scanId)}`;
+    const res = await fetch(url);
+    return handleResponse(res);
+  },
+
+  async getCases(status?: string): Promise<Case[]> {
+    const url = status ? `${API_BASE}/api/cases?status=${encodeURIComponent(status)}` : `${API_BASE}/api/cases`;
+    const res = await fetch(url);
+    return handleResponse<Case[]>(res);
+  },
+
+  async getCaseDetail(caseId: string): Promise<Case> {
+    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}`);
+    return handleResponse<Case>(res);
+  },
+
+  async createCase(payload: { title: string; description?: string }): Promise<Case> {
+    const res = await fetch(`${API_BASE}/api/cases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<Case>(res);
+  },
+
+  async addCaseItem(caseId: string, scanId: string): Promise<CaseItem> {
+    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scan_id: scanId }),
+    });
+    return handleResponse<CaseItem>(res);
+  },
+
+  async addCaseComment(caseId: string, body: string): Promise<CaseComment> {
+    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body }),
+    });
+    return handleResponse<CaseComment>(res);
+  },
+
+  async escalateCase(caseId: string, note: string): Promise<Case> {
+    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/escalate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note }),
+    });
+    return handleResponse<Case>(res);
+  },
+
+  async resolveCase(caseId: string, note: string): Promise<Case> {
+    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note }),
+    });
+    return handleResponse<Case>(res);
+  },
+
+  async reopenCase(caseId: string, note: string): Promise<Case> {
+    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/reopen`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note }),
+    });
+    return handleResponse<Case>(res);
+  },
+
+  async getCaseAudit(caseId: string): Promise<CaseAudit[]> {
+    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/audit`);
+    return handleResponse<CaseAudit[]>(res);
+  },
 };
+
