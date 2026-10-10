@@ -18,6 +18,13 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
+async function customFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    credentials: 'include',
+  });
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let errorMsg = `Server error (${res.status})`;
@@ -38,23 +45,23 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 export const api = {
   async getHealth(): Promise<HealthStatus> {
-    const res = await fetch(`${API_BASE}/api/health`);
+    const res = await customFetch(`${API_BASE}/api/health`);
     return handleResponse<HealthStatus>(res);
   },
 
   async getHealthConfig(): Promise<HealthConfig> {
-    const res = await fetch(`${API_BASE}/api/health/config`);
+    const res = await customFetch(`${API_BASE}/api/health/config`);
     return handleResponse<HealthConfig>(res);
   },
 
   async getDemoInfo(): Promise<DemoInfo> {
-    const res = await fetch(`${API_BASE}/api/demo`);
+    const res = await customFetch(`${API_BASE}/api/demo`);
     return handleResponse<DemoInfo>(res);
   },
 
   async seedDemo(reset = false): Promise<{ status: string; message: string; featured_target: string; featured_scan_id: string }> {
     const url = reset ? `${API_BASE}/api/demo/seed?reset=true` : `${API_BASE}/api/demo/seed`;
-    const res = await fetch(url, {
+    const res = await customFetch(url, {
       method: 'POST',
     });
     return handleResponse(res);
@@ -65,7 +72,7 @@ export const api = {
   },
 
   async analyzeUrl(url: string, forceRescan = false): Promise<Scan> {
-    const res = await fetch(`${API_BASE}/api/analyze/url`, {
+    const res = await customFetch(`${API_BASE}/api/analyze/url`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, force_rescan: forceRescan }),
@@ -74,7 +81,7 @@ export const api = {
   },
 
   async analyzeHash(hash: string): Promise<Scan> {
-    const res = await fetch(`${API_BASE}/api/analyze/hash`, {
+    const res = await customFetch(`${API_BASE}/api/analyze/hash`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hash }),
@@ -85,7 +92,7 @@ export const api = {
   async analyzeFile(file: File): Promise<Scan> {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch(`${API_BASE}/api/analyze/file`, {
+    const res = await customFetch(`${API_BASE}/api/analyze/file`, {
       method: 'POST',
       body: formData,
     });
@@ -95,7 +102,7 @@ export const api = {
   async analyzeEmail(file: File): Promise<Scan> {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch(`${API_BASE}/api/analyze/email`, {
+    const res = await customFetch(`${API_BASE}/api/analyze/email`, {
       method: 'POST',
       body: formData,
     });
@@ -107,12 +114,12 @@ export const api = {
     if (type && type !== 'all') query.append('type', type);
     query.append('limit', limit.toString());
     query.append('offset', offset.toString());
-    const res = await fetch(`${API_BASE}/api/scans?${query.toString()}`);
+    const res = await customFetch(`${API_BASE}/api/scans?${query.toString()}`);
     return handleResponse<Scan[]>(res);
   },
 
   async getScan(id: string): Promise<Scan> {
-    const res = await fetch(`${API_BASE}/api/scans/${id}`);
+    const res = await customFetch(`${API_BASE}/api/scans/${id}`);
     return handleResponse<Scan>(res);
   },
 
@@ -123,22 +130,22 @@ export const api = {
     last_scanned: string;
     scans: Scan[];
   }> {
-    const res = await fetch(`${API_BASE}/api/history/${encodeURIComponent(target)}`);
+    const res = await customFetch(`${API_BASE}/api/history/${encodeURIComponent(target)}`);
     return handleResponse(res);
   },
 
   async compareScans(id1: string, id2: string): Promise<CompareResult> {
-    const res = await fetch(`${API_BASE}/api/compare/${id1}/${id2}`);
+    const res = await customFetch(`${API_BASE}/api/compare/${id1}/${id2}`);
     return handleResponse<CompareResult>(res);
   },
 
   async getWatchlist(): Promise<WatchlistItem[]> {
-    const res = await fetch(`${API_BASE}/api/watchlist`);
+    const res = await customFetch(`${API_BASE}/api/watchlist`);
     return handleResponse<WatchlistItem[]>(res);
   },
 
   async addToWatchlist(target: string, targetType = 'url'): Promise<WatchlistItem> {
-    const res = await fetch(`${API_BASE}/api/watchlist`, {
+    const res = await customFetch(`${API_BASE}/api/watchlist`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target, target_type: targetType }),
@@ -147,26 +154,33 @@ export const api = {
   },
 
   async deleteFromWatchlist(id: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/api/watchlist/${id}`, {
+    const res = await customFetch(`${API_BASE}/api/watchlist/${id}`, {
       method: 'DELETE',
     });
     return handleResponse(res);
   },
 
   async rescanWatchlistItem(id: string): Promise<{ status: string; scan_id: string; score: number; level: string }> {
-    const res = await fetch(`${API_BASE}/api/watchlist/${id}/rescan`, {
+    const res = await customFetch(`${API_BASE}/api/watchlist/${id}/rescan`, {
       method: 'POST',
     });
     return handleResponse(res);
   },
 
   async getAlerts(): Promise<AlertItem[]> {
-    const res = await fetch(`${API_BASE}/api/alerts`);
+    const res = await customFetch(`${API_BASE}/api/alerts`);
     return handleResponse<AlertItem[]>(res);
   },
 
   async markAlertRead(id: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/api/alerts/${id}/read`, {
+    const res = await customFetch(`${API_BASE}/api/alerts/${id}/read`, {
+      method: 'POST',
+    });
+    return handleResponse(res);
+  },
+
+  async markAllAlertsRead(): Promise<void> {
+    const res = await customFetch(`${API_BASE}/api/alerts/read-all`, {
       method: 'POST',
     });
     return handleResponse(res);
@@ -174,31 +188,31 @@ export const api = {
 
   // Gmail OAuth & Inbox API
   async getGmailStatus(): Promise<{ connected: boolean; email: string | null; connected_at?: string; last_sync_at?: string }> {
-    const res = await fetch(`${API_BASE}/api/auth/gmail/status`);
+    const res = await customFetch(`${API_BASE}/api/auth/gmail/status`);
     return handleResponse(res);
   },
 
   async disconnectGmail(): Promise<{ connected: boolean; disconnected: boolean; message: string }> {
-    const res = await fetch(`${API_BASE}/api/auth/gmail/disconnect`, {
+    const res = await customFetch(`${API_BASE}/api/auth/gmail/disconnect`, {
       method: 'POST',
     });
     return handleResponse(res);
   },
 
   async getInbox(page = 1, limit = 50): Promise<any[]> {
-    const res = await fetch(`${API_BASE}/api/inbox?page=${page}&limit=${limit}`);
+    const res = await customFetch(`${API_BASE}/api/inbox?page=${page}&limit=${limit}`);
     return handleResponse<any[]>(res);
   },
 
   async syncInbox(): Promise<{ status: string; synced_count: number; last_sync_at?: string }> {
-    const res = await fetch(`${API_BASE}/api/inbox/sync`, {
+    const res = await customFetch(`${API_BASE}/api/inbox/sync`, {
       method: 'POST',
     });
     return handleResponse(res);
   },
 
   async getInboxMessageDetail(gmailId: string): Promise<Scan> {
-    const res = await fetch(`${API_BASE}/api/inbox/${encodeURIComponent(gmailId)}`);
+    const res = await customFetch(`${API_BASE}/api/inbox/${encodeURIComponent(gmailId)}`);
     return handleResponse<Scan>(res);
   },
 
@@ -209,7 +223,7 @@ export const api = {
   async getRecentGraphNodes(
     limit = 20
   ): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
-    const res = await fetch(`${API_BASE}/api/graph/recent?limit=${limit}`);
+    const res = await customFetch(`${API_BASE}/api/graph/recent?limit=${limit}`);
     return handleResponse(res);
   },
 
@@ -217,12 +231,12 @@ export const api = {
     nodeId: string,
     depth = 1
   ): Promise<{ root_id: string; nodes: GraphNode[]; edges: GraphEdge[] }> {
-    const res = await fetch(`${API_BASE}/api/graph/nodes/${encodeURIComponent(nodeId)}?depth=${depth}`);
+    const res = await customFetch(`${API_BASE}/api/graph/nodes/${encodeURIComponent(nodeId)}?depth=${depth}`);
     return handleResponse(res);
   },
 
   async getNodePivot(nodeId: string): Promise<GraphPivot> {
-    const res = await fetch(`${API_BASE}/api/graph/pivot/${encodeURIComponent(nodeId)}`);
+    const res = await customFetch(`${API_BASE}/api/graph/pivot/${encodeURIComponent(nodeId)}`);
     return handleResponse<GraphPivot>(res);
   },
 
@@ -230,7 +244,7 @@ export const api = {
     const url = type
       ? `${API_BASE}/api/graph/lookup?value=${encodeURIComponent(value)}&type=${encodeURIComponent(type)}`
       : `${API_BASE}/api/graph/lookup?value=${encodeURIComponent(value)}`;
-    const res = await fetch(url);
+    const res = await customFetch(url);
     return handleResponse<GraphNode>(res);
   },
 
@@ -241,23 +255,23 @@ export const api = {
     const url = forceRebuild
       ? `${API_BASE}/api/timeline/${encodeURIComponent(scanId)}?force_rebuild=true`
       : `${API_BASE}/api/timeline/${encodeURIComponent(scanId)}`;
-    const res = await fetch(url);
+    const res = await customFetch(url);
     return handleResponse(res);
   },
 
   async getCases(status?: string): Promise<Case[]> {
     const url = status ? `${API_BASE}/api/cases?status=${encodeURIComponent(status)}` : `${API_BASE}/api/cases`;
-    const res = await fetch(url);
+    const res = await customFetch(url);
     return handleResponse<Case[]>(res);
   },
 
   async getCaseDetail(caseId: string): Promise<Case> {
-    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}`);
+    const res = await customFetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}`);
     return handleResponse<Case>(res);
   },
 
   async createCase(payload: { title: string; description?: string }): Promise<Case> {
-    const res = await fetch(`${API_BASE}/api/cases`, {
+    const res = await customFetch(`${API_BASE}/api/cases`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -266,7 +280,7 @@ export const api = {
   },
 
   async addCaseItem(caseId: string, scanId: string): Promise<CaseItem> {
-    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/items`, {
+    const res = await customFetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/items`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scan_id: scanId }),
@@ -275,7 +289,7 @@ export const api = {
   },
 
   async addCaseComment(caseId: string, body: string): Promise<CaseComment> {
-    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/comments`, {
+    const res = await customFetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ body }),
@@ -284,7 +298,7 @@ export const api = {
   },
 
   async escalateCase(caseId: string, note: string): Promise<Case> {
-    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/escalate`, {
+    const res = await customFetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/escalate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ note }),
@@ -293,7 +307,7 @@ export const api = {
   },
 
   async resolveCase(caseId: string, note: string): Promise<Case> {
-    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/resolve`, {
+    const res = await customFetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ note }),
@@ -302,7 +316,7 @@ export const api = {
   },
 
   async reopenCase(caseId: string, note: string): Promise<Case> {
-    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/reopen`, {
+    const res = await customFetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/reopen`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ note }),
@@ -311,7 +325,7 @@ export const api = {
   },
 
   async getCaseAudit(caseId: string): Promise<CaseAudit[]> {
-    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/audit`);
+    const res = await customFetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}/audit`);
     return handleResponse<CaseAudit[]>(res);
   },
 };

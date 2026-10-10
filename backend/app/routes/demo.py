@@ -7,13 +7,14 @@ Chronological scan IDs: _0 is the oldest, increasing with time.
 
 from datetime import datetime, timedelta
 import json
-from typing import Any, Dict, List
-from fastapi import APIRouter, Depends
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Alert, Scan, WatchlistItem, generate_id
 from ..services.attack_chain import build_attack_chain
+from ..session import get_or_create_session_id
 
 router = APIRouter(prefix="/api/demo", tags=["Demo"])
 
@@ -33,6 +34,7 @@ def _create_simulated_scan(
     factors: List[Dict[str, Any]],
     raw_summary: Dict[str, Any],
     sources: Dict[str, Any],
+    user_session_id: Optional[str] = None,
 ) -> Scan:
     # Ensure attack chain is populated
     if "attack_chain" not in raw_summary:
@@ -54,6 +56,7 @@ def _create_simulated_scan(
         sources_json=json.dumps(sources),
         is_demo=True,
         created_at=timestamp,
+        user_session_id=user_session_id,
     )
 
 
@@ -99,31 +102,38 @@ def get_demo_info():
 
 
 @router.post("/reset")
-def reset_demo_data(db: Session = Depends(get_db)):
+def reset_demo_data(request: Request, response: Response, db: Session = Depends(get_db)):
     """Cleanly reset and re-seed all demo data."""
-    return seed_demo_data(reset=True, db=db)
+    return seed_demo_data(request=request, response=response, reset=True, db=db)
 
 
 @router.post("/seed")
-def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
+def seed_demo_data(
+    request: Request,
+    response: Response,
+    reset: bool = False,
+    db: Session = Depends(get_db),
+):
     """
     Idempotent seeding of demo scans, watchlist, and evolution history.
     Scan IDs are strictly chronological: _0 is the oldest, increasing with time.
     If reset=True, cleanly wipes existing scans and re-seeds the pristine baseline.
     """
+    session_id = get_or_create_session_id(request, response)
+    s_sfx = f"_{session_id[:8]}"
     now = datetime.utcnow()
 
     if reset:
-        # Wipe all existing scans, alerts, and watchlist items to guarantee pristine state
-        db.query(Alert).delete(synchronize_session=False)
-        db.query(WatchlistItem).delete(synchronize_session=False)
-        db.query(Scan).delete(synchronize_session=False)
+        # Wipe all existing scans, alerts, and watchlist items for current session
+        db.query(Alert).filter(Alert.user_session_id == session_id).delete(synchronize_session=False)
+        db.query(WatchlistItem).filter(WatchlistItem.user_session_id == session_id).delete(synchronize_session=False)
+        db.query(Scan).filter(Scan.user_session_id == session_id).delete(synchronize_session=False)
         db.commit()
     else:
         # 1. Idempotency Check: if already seeded, return without changes
-        existing_featured = db.query(Scan).filter(Scan.target == FEATURED_DEMO_URL).first()
+        existing_featured = db.query(Scan).filter(Scan.target == FEATURED_DEMO_URL, Scan.user_session_id == session_id).first()
         if existing_featured:
-            latest = db.query(Scan).filter(Scan.target == FEATURED_DEMO_URL).order_by(Scan.timestamp.desc()).first()
+            latest = db.query(Scan).filter(Scan.target == FEATURED_DEMO_URL, Scan.user_session_id == session_id).order_by(Scan.timestamp.desc()).first()
             return {
                 "status": "already_seeded",
                 "message": "Demo dataset is already seeded.",
@@ -133,11 +143,12 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
 
     # SEED TARGET 1: Safe URL (with valid 1-hop redirect chain)
     scan_safe = _create_simulated_scan(
-        scan_id="demo_scan_safe_0",
+        scan_id=f"demo_scan_safe_0{s_sfx}",
         target="https://safe-portal.example.com",
         target_type="url",
         timestamp=now - timedelta(days=2),
         score=5,
+        user_session_id=session_id,
         level="SAFE",
         confidence=88,
         malicious_count=0,
@@ -179,7 +190,7 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
 
     # SEED TARGET 2: Young Phishing URL (with valid 1-hop redirect chain)
     scan_phish = _create_simulated_scan(
-        scan_id="demo_scan_phish_0",
+        scan_id=f"demo_scan_phish_0{s_sfx}",
         target="http://account-verification-alert.example-phishing.org/login",
         target_type="url",
         timestamp=now - timedelta(hours=8),
@@ -188,6 +199,7 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
         confidence=75,
         malicious_count=0,
         total_engines=70,
+        user_session_id=session_id,
         factors=[
             {
                 "id": "infra_new_domain",
@@ -248,7 +260,7 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
     # SEED TARGET 3: Malicious Hash with Behavior
     demo_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     scan_hash = _create_simulated_scan(
-        scan_id="demo_scan_hash_0",
+        scan_id=f"demo_scan_hash_0{s_sfx}",
         target=demo_hash,
         target_type="hash",
         timestamp=now - timedelta(days=1),
@@ -257,6 +269,7 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
         confidence=92,
         malicious_count=42,
         total_engines=72,
+        user_session_id=session_id,
         factors=[
             {
                 "id": "av_detections_hit",
@@ -340,9 +353,9 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
         ),
     ]
 
-    last_featured_scan_id = "demo_scan_deteriorate_4"
+    last_featured_scan_id = f"demo_scan_deteriorate_4{s_sfx}"
     for idx, days_ago, sc, lvl, conf, det_c, factor_keys, f_dom, hops_c, rep_lists in hist_points:
-        s_id = f"demo_scan_deteriorate_{idx}"
+        s_id = f"demo_scan_deteriorate_{idx}{s_sfx}"
 
         # Build factors
         f_list = []
@@ -438,6 +451,7 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
             malicious_count=det_c,
             total_engines=72,
             factors=f_list,
+            user_session_id=session_id,
             raw_summary={
                 "group_breakdown": {
                     "AV_DETECTIONS": 50 if det_c >= 16 else (30 if det_c >= 3 else 0),
@@ -466,7 +480,7 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
 
     # SEED TARGET 5: Improving URL (Chronological: _0 oldest, _1 newest)
     scan_imp_0 = _create_simulated_scan(
-        scan_id="demo_scan_improve_0",
+        scan_id=f"demo_scan_improve_0{s_sfx}",
         target="http://remediated-host.example-clean.net/download",
         target_type="url",
         timestamp=now - timedelta(days=5),
@@ -475,6 +489,7 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
         confidence=80,
         malicious_count=18,
         total_engines=72,
+        user_session_id=session_id,
         factors=[
             {
                 "id": "av_detections_hit",
@@ -508,7 +523,7 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
         sources={"VirusTotal": {"status": "ok"}},
     )
     scan_imp_1 = _create_simulated_scan(
-        scan_id="demo_scan_improve_1",
+        scan_id=f"demo_scan_improve_1{s_sfx}",
         target="http://remediated-host.example-clean.net/download",
         target_type="url",
         timestamp=now - timedelta(hours=4),
@@ -517,6 +532,7 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
         confidence=75,
         malicious_count=0,
         total_engines=72,
+        user_session_id=session_id,
         factors=[
             {
                 "id": "mitigating_established_reputation",
@@ -562,6 +578,7 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
         last_level="CRITICAL",
         last_score=82,
         active=True,
+        user_session_id=session_id,
     )
     db.add(wl_item)
 
@@ -570,11 +587,12 @@ def seed_demo_data(reset: bool = False, db: Session = Depends(get_db)):
         id=generate_id("alert"),
         target=FEATURED_DEMO_URL,
         scan_id=last_featured_scan_id,
-        previous_scan_id="demo_scan_deteriorate_3",
+        previous_scan_id=f"demo_scan_deteriorate_3{s_sfx}",
         kind="threat_escalation",
         message=f"{FEATURED_DEMO_URL} escalated from HIGH (65/100) to CRITICAL (82/100) with 28 AV detections.",
         created_at=now - timedelta(hours=2),
         seen=False,
+        user_session_id=session_id,
     )
     db.add(alert_item)
 

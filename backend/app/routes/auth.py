@@ -1,25 +1,29 @@
 """
 Authentication routes for Gmail OAuth2 integration.
 Handles consent start, callback token exchange, status check, and revocation/disconnect.
+Per-browser multi-user session isolation via session cookies.
 """
 
 from datetime import datetime
 import logging
 import os
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import GmailAccount, generate_id
+from ..session import get_or_create_session_id
 from ..services.gmail_oauth import (
     decrypt_token,
     encrypt_token,
     exchange_code,
     fetch_account_profile_email,
     get_authorization_url,
+    get_state_session,
     revoke_token,
+    store_state_session,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,10 +33,11 @@ FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 
 
 @router.get("/start")
-def start_gmail_oauth(request: Request):
+def start_gmail_oauth(request: Request, response: Response):
     """
     Start OAuth flow by redirecting user to Google's consent screen.
     Requires Google Client ID & Secret configured in environment.
+    Stores session_id associated with OAuth state.
     """
     client_id = os.getenv("GOOGLE_CLIENT_ID", "")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
@@ -46,9 +51,14 @@ def start_gmail_oauth(request: Request):
             },
         )
 
+    session_id = get_or_create_session_id(request, response)
+
     try:
-        auth_url, _ = get_authorization_url()
-        return RedirectResponse(url=auth_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+        auth_url, state_out = get_authorization_url()
+        store_state_session(state_out, session_id)
+        redirect_resp = RedirectResponse(url=auth_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+        get_or_create_session_id(request, redirect_resp)
+        return redirect_resp
     except Exception as e:
         logger.exception("Failed to build authorization URL: %s", e)
         raise HTTPException(
@@ -59,6 +69,8 @@ def start_gmail_oauth(request: Request):
 
 @router.get("/callback")
 def gmail_oauth_callback(
+    request: Request,
+    response: Response,
     code: Optional[str] = Query(None),
     error: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
@@ -84,10 +96,16 @@ def gmail_oauth_callback(
         logger.exception("Token exchange failed: %s", e)
         return RedirectResponse(url=f"{FRONTEND_ORIGIN}/inbox?error=token_exchange_failed")
 
+    session_id = (get_state_session(state) if state else None) or get_or_create_session_id(request, response)
+
     refresh_token_val = credentials.refresh_token
     if not refresh_token_val:
-        # Check if an existing account already has a refresh token
-        existing = db.query(GmailAccount).filter(GmailAccount.is_active == True).first()
+        # Check if an existing account already has a refresh token for this session
+        existing = (
+            db.query(GmailAccount)
+            .filter(GmailAccount.user_session_id == session_id, GmailAccount.is_active == True)
+            .first()
+        )
         if existing and existing.encrypted_refresh_token:
             refresh_token_val = decrypt_token(existing.encrypted_refresh_token)
         else:
@@ -97,8 +115,8 @@ def gmail_oauth_callback(
     user_email = fetch_account_profile_email(credentials) or "user@gmail.com"
     encrypted_rt = encrypt_token(refresh_token_val)
 
-    # Upsert single active account for default session
-    account = db.query(GmailAccount).filter(GmailAccount.user_session_id == "default_user").first()
+    # Upsert account for this browser session
+    account = db.query(GmailAccount).filter(GmailAccount.user_session_id == session_id).first()
     if account:
         account.email_address = user_email
         account.encrypted_refresh_token = encrypted_rt
@@ -107,7 +125,7 @@ def gmail_oauth_callback(
     else:
         account = GmailAccount(
             id=generate_id("gacc"),
-            user_session_id="default_user",
+            user_session_id=session_id,
             email_address=user_email,
             encrypted_refresh_token=encrypted_rt,
             scopes="https://www.googleapis.com/auth/gmail.readonly",
@@ -117,17 +135,20 @@ def gmail_oauth_callback(
         db.add(account)
 
     db.commit()
-    return RedirectResponse(url=f"{FRONTEND_ORIGIN}/inbox?connected=true")
+    redirect_resp = RedirectResponse(url=f"{FRONTEND_ORIGIN}/inbox?connected=true")
+    get_or_create_session_id(request, redirect_resp)
+    return redirect_resp
 
 
 @router.get("/status")
-def gmail_oauth_status(db: Session = Depends(get_db)):
+def gmail_oauth_status(request: Request, response: Response, db: Session = Depends(get_db)):
     """
-    Return connection status of Gmail account.
+    Return connection status of Gmail account for current browser session.
     """
+    session_id = get_or_create_session_id(request, response)
     account = (
         db.query(GmailAccount)
-        .filter(GmailAccount.user_session_id == "default_user", GmailAccount.is_active == True)
+        .filter(GmailAccount.user_session_id == session_id, GmailAccount.is_active == True)
         .first()
     )
     if not account:
@@ -142,13 +163,14 @@ def gmail_oauth_status(db: Session = Depends(get_db)):
 
 
 @router.post("/disconnect")
-def gmail_oauth_disconnect(db: Session = Depends(get_db)):
+def gmail_oauth_disconnect(request: Request, response: Response, db: Session = Depends(get_db)):
     """
-    Revoke OAuth tokens at Google and delete account row from local database.
+    Revoke OAuth tokens at Google and delete account row for current browser session.
     """
+    session_id = get_or_create_session_id(request, response)
     account = (
         db.query(GmailAccount)
-        .filter(GmailAccount.user_session_id == "default_user", GmailAccount.is_active == True)
+        .filter(GmailAccount.user_session_id == session_id, GmailAccount.is_active == True)
         .first()
     )
     if not account:

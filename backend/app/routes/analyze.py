@@ -12,12 +12,20 @@ import os
 import re
 from datetime import datetime
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Scan, generate_id
-from ..risk_engine import EVIDENCE_GROUPS, Factor, LEVEL_THRESHOLDS, NormalizedEvidence, evaluate
+from ..session import get_or_create_session_id
+from ..risk_engine import (
+    EVIDENCE_GROUPS,
+    Factor,
+    LEVEL_THRESHOLDS,
+    NormalizedEvidence,
+    _generate_plain_english_explanation,
+    evaluate,
+)
 from ..schemas import (
     AnalyzeHashRequest,
     AnalyzeUrlRequest,
@@ -117,7 +125,8 @@ def serialize_scan_response(
 
 
 @router.post("/url", response_model=ScanResponse)
-async def analyze_url(req: AnalyzeUrlRequest, db: Session = Depends(get_db)):
+async def analyze_url(req: AnalyzeUrlRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    session_id = get_or_create_session_id(request, response)
     cleaned_url = refang_target(req.url.strip())
 
     # 1. SSRF and syntax validation
@@ -160,7 +169,12 @@ async def analyze_url(req: AnalyzeUrlRequest, db: Session = Depends(get_db)):
     sim_override_score = None
     extra_demo_factor = None
     if "example-phishing-login.com" in cleaned_url:
-        latest_scan = db.query(Scan).filter(Scan.target == cleaned_url).order_by(Scan.timestamp.desc()).first()
+        latest_scan = (
+            db.query(Scan)
+            .filter(Scan.target == cleaned_url, Scan.user_session_id == session_id)
+            .order_by(Scan.timestamp.desc())
+            .first()
+        )
         prev_score = latest_scan.risk_score if latest_scan else 82
         prev_det = latest_scan.detection_count if latest_scan else 28
         prev_raw = json.loads(latest_scan.raw_summary_json) if (latest_scan and latest_scan.raw_summary_json) else {}
@@ -240,9 +254,20 @@ async def analyze_url(req: AnalyzeUrlRequest, db: Session = Depends(get_db)):
             "total": sim_malicious + 64,
             "categories": ["phishing", "malicious"],
         }
+        vt_res["status"] = "ok"
+        vt_res["message"] = f"VirusTotal analysis: {sim_malicious} engines flagged target."
+
         openphish_res["data"] = {"flagged": "OpenPhish" in flagged_rep_lists}
+        openphish_res["status"] = "ok"
+        openphish_res["message"] = "OpenPhish feed match confirmed." if "OpenPhish" in flagged_rep_lists else "Clean"
+
         sb_res["data"] = {"flagged": "Safe Browsing" in flagged_rep_lists, "threat_types": ["SOCIAL_ENGINEERING"]}
+        sb_res["status"] = "ok"
+        sb_res["message"] = "Google Safe Browsing match confirmed." if "Safe Browsing" in flagged_rep_lists else "Clean"
+
         urlhaus_res["data"] = {"flagged": "URLhaus" in flagged_rep_lists, "threat": "Phishing-Credential-Harvest"}
+        urlhaus_res["status"] = "ok"
+        urlhaus_res["message"] = "URLhaus active threat match confirmed." if "URLhaus" in flagged_rep_lists else "Clean"
 
     # Normalize evidence
     norm = NormalizedEvidence(
@@ -262,15 +287,27 @@ async def analyze_url(req: AnalyzeUrlRequest, db: Session = Depends(get_db)):
     assessment = evaluate(norm, now=datetime.utcnow())
     if sim_override_score is not None:
         assessment.score = sim_override_score
-        assessment.level = "CRITICAL"
-        assessment.group_breakdown["AV_DETECTIONS"] = 50
-        assessment.group_breakdown["REPUTATION_LISTS"] = 30
-        assessment.group_breakdown["DOMAIN_INFRA"] = sim_override_score - 80
+        derived_level = "UNKNOWN"
+        for low_bound, high_bound, lvl_name in LEVEL_THRESHOLDS:
+            if low_bound <= sim_override_score <= high_bound:
+                derived_level = lvl_name
+                break
+        assessment.level = derived_level
+        assessment.group_breakdown["AV_DETECTIONS"] = min(50, sim_override_score)
+        assessment.group_breakdown["REPUTATION_LISTS"] = min(30, max(0, sim_override_score - 50))
+        assessment.group_breakdown["DOMAIN_INFRA"] = max(0, sim_override_score - 80)
         assessment.group_breakdown["BEHAVIOR"] = 0
         assessment.group_breakdown["MITIGATING"] = 0
         if extra_demo_factor:
             from ..risk_engine import Factor
             assessment.factors.append(Factor(**extra_demo_factor))
+        assessment.explanation = _generate_plain_english_explanation(
+            assessment.score,
+            assessment.level,
+            assessment.confidence,
+            assessment.factors,
+            assessment.group_breakdown,
+        )
 
     attack_chain = build_attack_chain(
         target=cleaned_url,
@@ -308,6 +345,7 @@ async def analyze_url(req: AnalyzeUrlRequest, db: Session = Depends(get_db)):
 
     scan = Scan(
         id=generate_id("scan"),
+        user_session_id=session_id,
         target=cleaned_url,
         target_type="url",
         timestamp=datetime.utcnow(),
@@ -331,7 +369,8 @@ async def analyze_url(req: AnalyzeUrlRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/hash", response_model=ScanResponse)
-async def analyze_hash(req: AnalyzeHashRequest, db: Session = Depends(get_db)):
+async def analyze_hash(req: AnalyzeHashRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    session_id = get_or_create_session_id(request, response)
     file_hash = req.hash.strip().lower()
 
     # Validate MD5 / SHA-1 / SHA-256
@@ -359,6 +398,8 @@ async def analyze_hash(req: AnalyzeHashRequest, db: Session = Depends(get_db)):
             "type_description": "Win32 EXE",
             "is_signed": False,
         }
+        vt_res["status"] = "ok"
+        vt_res["message"] = "VirusTotal analysis: 42 engines flagged target [DEMO]"
         behavior_data = {
             "powershell_executed": True,
             "powershell_command": "powershell.exe -NoP -NonI -W Hidden -Enc SUVY...",
@@ -397,6 +438,7 @@ async def analyze_hash(req: AnalyzeHashRequest, db: Session = Depends(get_db)):
 
     scan = Scan(
         id=generate_id("scan"),
+        user_session_id=session_id,
         target=file_hash,
         target_type="hash",
         timestamp=datetime.utcnow(),
@@ -420,11 +462,12 @@ async def analyze_hash(req: AnalyzeHashRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/file", response_model=ScanResponse)
-async def analyze_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def analyze_file(request: Request, response: Response, file: UploadFile = File(...), db: Session = Depends(get_db)):
     """
     Stream-hash uploaded file without persisting to disk.
     Look up hash in threat database.
     """
+    session_id = get_or_create_session_id(request, response)
     sha256 = hashlib.sha256()
     sha1 = hashlib.sha1()
     md5 = hashlib.md5()
@@ -461,6 +504,7 @@ async def analyze_file(file: UploadFile = File(...), db: Session = Depends(get_d
             "total": 0,
             "message": "Unknown sample. No existing reputation found.",
         }
+        vt_res["status"] = "ok"
 
     norm = NormalizedEvidence(
         target=file_sha256,
@@ -499,6 +543,7 @@ async def analyze_file(file: UploadFile = File(...), db: Session = Depends(get_d
 
     scan = Scan(
         id=generate_id("scan"),
+        user_session_id=session_id,
         target=file_sha256,
         target_type="file",
         timestamp=datetime.utcnow(),
@@ -523,6 +568,8 @@ async def analyze_file(file: UploadFile = File(...), db: Session = Depends(get_d
 
 @router.post("/email", response_model=EmailAnalysisResponse)
 async def analyze_email(
+    request: Request,
+    response: Response,
     file: UploadFile = File(...),
     hash_only: bool = False,
     db: Session = Depends(get_db),
@@ -533,6 +580,7 @@ async def analyze_email(
     never written to disk, never sent to third-party APIs, and never retained.
     Only analytical metadata, hashes, and authentication verdicts are persisted.
     """
+    session_id = get_or_create_session_id(request, response)
     filename = file.filename or "sample.eml"
     fn_lower = filename.lower()
 
@@ -566,7 +614,13 @@ async def analyze_email(
         buffer.extend(chunk)
 
     raw_bytes = bytes(buffer)
-    _, response = await process_email_forensics(raw_bytes, filename=filename, hash_only=hash_only, db=db)
-    return response
+    _, response_obj = await process_email_forensics(
+        raw_bytes,
+        filename=filename,
+        hash_only=hash_only,
+        user_session_id=session_id,
+        db=db,
+    )
+    return response_obj
 
 

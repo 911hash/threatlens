@@ -42,16 +42,6 @@ export const AppShell: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Route /inbox — default landing when Gmail is connected
-  React.useEffect(() => {
-    if (location.pathname === '/' || location.pathname === '/dashboard') {
-      api.getGmailStatus().then((status) => {
-        if (status.connected) {
-          navigate('/inbox', { replace: true });
-        }
-      }).catch(() => {});
-    }
-  }, [location.pathname, navigate]);
 
   // Global Keyboard Shortcuts
   // 1. Cmd/Ctrl+K -> toggle command palette

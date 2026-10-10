@@ -55,6 +55,7 @@ async def process_email_forensics(
     db: Optional[Session] = None,
     gmail_id: Optional[str] = None,
     tenant_id: str = "default",
+    user_session_id: Optional[str] = None,
 ) -> Tuple[Scan, EmailAnalysisResponse]:
     """
     Forensically inspect in-memory raw RFC822 email bytes and persist scan.
@@ -618,8 +619,10 @@ async def process_email_forensics(
         "anonymized_prompt": llm_res.anonymized_prompt,
     }
 
+    effective_session_id = user_session_id or "migrated_default"
     scan = Scan(
         id=generate_id("scan"),
+        user_session_id=effective_session_id,
         target=target_display,
         target_type="email",
         timestamp=datetime.utcnow(),
@@ -641,7 +644,7 @@ async def process_email_forensics(
         db.refresh(scan)
         try:
             from .graph_service import index_email
-            index_email(scan.id, tenant_id=tenant_id, db=db)
+            index_email(scan.id, tenant_id=tenant_id, user_session_id=effective_session_id, db=db)
         except Exception as e:
             logger.exception("Failed to index email scan into artifact graph: %s", e)
 

@@ -90,9 +90,7 @@ export const AlertsPage: React.FC = () => {
     if (unread.length === 0) return;
 
     try {
-      for (const item of unread) {
-        await api.markAlertRead(item.id);
-      }
+      await api.markAllAlertsRead();
       setAlerts((prev) => prev.map((a) => ({ ...a, seen: true })));
       window.dispatchEvent(new CustomEvent('threatlens:alerts-updated'));
       toast.success(`Marked ${unread.length} alerts as read`);
@@ -269,6 +267,7 @@ export const AlertsPage: React.FC = () => {
             <option value="all">All Alert Types</option>
             <option value="threat_escalation">Threat Escalation</option>
             <option value="threat_downgrade">Threat Downgrade</option>
+            <option value="score_change">Score Drift</option>
           </select>
         </div>
 
@@ -293,6 +292,7 @@ export const AlertsPage: React.FC = () => {
               <div className="space-y-3">
                 {items.map((alert) => {
                   const isEscalation = alert.kind === 'threat_escalation';
+                  const isDowngrade = alert.kind === 'threat_downgrade';
                   const isMarking = markingIds.includes(alert.id);
 
                   return (
@@ -310,9 +310,13 @@ export const AlertsPage: React.FC = () => {
                             <div className="p-2 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20">
                               <TrendingUp className="w-4 h-4" />
                             </div>
-                          ) : (
+                          ) : isDowngrade ? (
                             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                               <TrendingDown className="w-4 h-4" />
+                            </div>
+                          ) : (
+                            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                              <RotateCcw className="w-4 h-4" />
                             </div>
                           )}
                         </div>
@@ -323,11 +327,11 @@ export const AlertsPage: React.FC = () => {
                               <DefangText value={alert.target} showCopy={true} />
                             </span>
                             <Badge
-                              variant={isEscalation ? 'critical' : 'low'}
+                              variant={isEscalation ? 'danger' : isDowngrade ? 'success' : 'warning'}
                               size="xs"
-                              className="uppercase font-mono"
+                              className="uppercase font-mono font-bold"
                             >
-                              {isEscalation ? 'Escalation' : 'Downgrade'}
+                              {isEscalation ? 'ESCALATION' : isDowngrade ? 'DOWNGRADE' : 'DRIFT'}
                             </Badge>
                             {!alert.seen && (
                               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />

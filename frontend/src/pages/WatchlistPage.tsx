@@ -142,6 +142,7 @@ export function WatchlistPage() {
         `Rescanned ${item.target}: Score is now ${res.score} (${res.level})`,
         'Watchlist Drift Evaluated'
       );
+      window.dispatchEvent(new CustomEvent('threatlens:alerts-updated'));
     } catch (err: any) {
       toast.error(err.message || 'Failed to rescan target');
     } finally {

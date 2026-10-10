@@ -14,25 +14,39 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 import os
 from typing import Any, Dict
+import uuid
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .database import Base, SessionLocal, engine
+from .database import Base, SessionLocal, engine, run_migrations
 from .models import Alert, Scan, WatchlistItem, generate_id
 from .routes import analyze, auth, demo, forensics, history, inbox, watchlist
 from .schemas import HealthConfigResponse, HealthResponse
+from .session import COOKIE_NAME, SESSION_COOKIE_MAX_AGE, get_or_create_session_id
 from .services.gmail_worker import shutdown_gmail_polling_worker, start_gmail_polling_worker
 from apscheduler.schedulers.background import BackgroundScheduler
 from .services.url_analysis import refang_target, trace_url_redirects, validate_url_syntax
 from .services.virustotal import VT_API_KEY, lookup_virustotal_hash, lookup_virustotal_url
 from .risk_engine import NormalizedEvidence, evaluate
 
-# Create tables
+# Create tables and run auto-migrations
 Base.metadata.create_all(bind=engine)
+run_migrations()
 
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+# Parse comma-separated origins if provided
+allowed_origins_set = set()
+for org in FRONTEND_ORIGIN.split(","):
+    clean_org = org.strip()
+    if clean_org:
+        allowed_origins_set.add(clean_org)
+allowed_origins_set.add("http://localhost:5173")
+allowed_origins_set.add("http://127.0.0.1:5173")
+allowed_origins_set.add("http://localhost:3000")
+allow_origins_list = list(allowed_origins_set)
+
 WATCHLIST_INTERVAL_MINUTES = int(os.getenv("WATCHLIST_INTERVAL_MINUTES", "15"))
 
 # Background Watchlist Task
@@ -103,10 +117,34 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Session cookie middleware (auto-attaches tl_session cookie to incoming/outgoing traffic)
+@app.middleware("http")
+async def session_cookie_middleware(request: Request, call_next):
+    header_val = request.headers.get("X-Session-ID")
+    cookie_val = request.cookies.get(COOKIE_NAME)
+    had_cookie = bool(cookie_val)
+    session_id = header_val or cookie_val or str(uuid.uuid4())
+    request.state.session_id = session_id
+
+    response = await call_next(request)
+
+    # Set cookie on outgoing response if not present in request cookies and not dev header override
+    if not had_cookie:
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value=session_id,
+            max_age=SESSION_COOKIE_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+            path="/",
+        )
+    return response
+
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN, "http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=allow_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

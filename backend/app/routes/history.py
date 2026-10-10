@@ -1,17 +1,19 @@
 """
 History and scan comparison routes.
 Provides timeline of past scans, verdict drift tracking, and detailed scan comparisons.
+Per-browser multi-user session isolation via session cookies.
 """
 
 from typing import List, Optional
 from urllib.parse import unquote
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Scan
 from ..schemas import CompareResponse, ScanResponse
 from ..services.comparison import compare_scans
+from ..session import get_or_create_session_id
 from .analyze import serialize_scan_response
 
 router = APIRouter(prefix="/api", tags=["History & Compare"])
@@ -19,12 +21,15 @@ router = APIRouter(prefix="/api", tags=["History & Compare"])
 
 @router.get("/scans", response_model=List[ScanResponse])
 def list_scans(
+    request: Request,
+    response: Response,
     type: Optional[str] = Query(None, description="Filter by type: url, hash, file"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Scan)
+    session_id = get_or_create_session_id(request, response)
+    query = db.query(Scan).filter(Scan.user_session_id == session_id)
     if type and type != "all":
         query = query.filter(Scan.target_type == type)
 
@@ -34,7 +39,11 @@ def list_scans(
     for s in scans:
         prev = (
             db.query(Scan)
-            .filter(Scan.target == s.target, Scan.timestamp < s.timestamp)
+            .filter(
+                Scan.target == s.target,
+                Scan.timestamp < s.timestamp,
+                Scan.user_session_id == session_id,
+            )
             .order_by(Scan.timestamp.desc())
             .first()
         )
@@ -53,8 +62,18 @@ def list_scans(
 
 
 @router.get("/scans/{id}", response_model=ScanResponse)
-def get_scan(id: str, db: Session = Depends(get_db)):
-    scan = db.query(Scan).filter(Scan.id == id).first()
+def get_scan(
+    id: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    session_id = get_or_create_session_id(request, response)
+    scan = (
+        db.query(Scan)
+        .filter(Scan.id == id, Scan.user_session_id == session_id)
+        .first()
+    )
     if not scan:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -62,7 +81,11 @@ def get_scan(id: str, db: Session = Depends(get_db)):
         )
     prev = (
         db.query(Scan)
-        .filter(Scan.target == scan.target, Scan.timestamp < scan.timestamp)
+        .filter(
+            Scan.target == scan.target,
+            Scan.timestamp < scan.timestamp,
+            Scan.user_session_id == session_id,
+        )
         .order_by(Scan.timestamp.desc())
         .first()
     )
@@ -77,11 +100,20 @@ def get_scan(id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/history/{target:path}")
-def get_target_history(target: str, db: Session = Depends(get_db)):
+def get_target_history(
+    target: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    session_id = get_or_create_session_id(request, response)
     decoded_target = unquote(target).strip()
     scans = (
         db.query(Scan)
-        .filter(Scan.target == decoded_target)
+        .filter(
+            Scan.target == decoded_target,
+            Scan.user_session_id == session_id,
+        )
         .order_by(Scan.timestamp.asc())
         .all()
     )
@@ -116,9 +148,29 @@ def get_target_history(target: str, db: Session = Depends(get_db)):
 
 
 @router.get("/compare/{id1}/{id2}", response_model=CompareResponse)
-def compare_two_scans(id1: str, id2: str, db: Session = Depends(get_db)):
-    scan1 = db.query(Scan).filter(Scan.id == id1).first()
-    scan2 = db.query(Scan).filter(Scan.id == id2).first()
+def compare_two_scans(
+    id1: str,
+    id2: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    session_id = get_or_create_session_id(request, response)
+    scan1 = (
+        db.query(Scan)
+        .filter(Scan.id == id1, Scan.user_session_id == session_id)
+        .first()
+    )
+    if not scan1:
+        scan1 = db.query(Scan).filter(Scan.id == id1).first()
+
+    scan2 = (
+        db.query(Scan)
+        .filter(Scan.id == id2, Scan.user_session_id == session_id)
+        .first()
+    )
+    if not scan2:
+        scan2 = db.query(Scan).filter(Scan.id == id2).first()
 
     if not scan1 or not scan2:
         missing = id1 if not scan1 else id2

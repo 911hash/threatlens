@@ -41,7 +41,13 @@ export const Sidebar: React.FC = () => {
       refetchAlerts();
     };
     window.addEventListener('threatlens:alerts-updated', handleAlertsUpdated);
-    return () => window.removeEventListener('threatlens:alerts-updated', handleAlertsUpdated);
+    const interval = setInterval(() => {
+      refetchAlerts();
+    }, 10000);
+    return () => {
+      window.removeEventListener('threatlens:alerts-updated', handleAlertsUpdated);
+      clearInterval(interval);
+    };
   }, [refetchAlerts]);
 
   const navItems = [

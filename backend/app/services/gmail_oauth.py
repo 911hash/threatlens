@@ -24,21 +24,35 @@ DEFAULT_REDIRECT_URI = "http://localhost:8000/api/auth/gmail/callback"
 GOOGLE_REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke"
 
 _verifier_store: dict[str, str] = {}   # keyed by state
+_session_store: dict[str, str] = {}    # keyed by state -> session_id
 _verifier_timestamps: dict[str, float] = {}  # keyed by state -> creation timestamp
 _verifier_store_lock = threading.Lock()
 _VERIFIER_TTL_SECONDS = 600.0  # 10 minutes
 
 
-def store_verifier(state: str, verifier: str) -> None:
+def store_verifier(state: str, verifier: str, session_id: Optional[str] = None) -> None:
     now = time.time()
     with _verifier_store_lock:
         # Evict entries older than 10 minutes
         stale_states = [s for s, ts in _verifier_timestamps.items() if now - ts > _VERIFIER_TTL_SECONDS]
         for s in stale_states:
             _verifier_store.pop(s, None)
+            _session_store.pop(s, None)
             _verifier_timestamps.pop(s, None)
         _verifier_store[state] = verifier
+        if session_id:
+            _session_store[state] = session_id
         _verifier_timestamps[state] = now
+
+
+def store_state_session(state: str, session_id: str) -> None:
+    with _verifier_store_lock:
+        _session_store[state] = session_id
+
+
+def get_state_session(state: str) -> Optional[str]:
+    with _verifier_store_lock:
+        return _session_store.get(state)
 
 
 def pop_verifier(state: str) -> Optional[str]:
@@ -48,6 +62,7 @@ def pop_verifier(state: str) -> Optional[str]:
         stale_states = [s for s, ts in _verifier_timestamps.items() if now - ts > _VERIFIER_TTL_SECONDS]
         for s in stale_states:
             _verifier_store.pop(s, None)
+            _session_store.pop(s, None)
             _verifier_timestamps.pop(s, None)
         ts = _verifier_timestamps.pop(state, None)
         verifier = _verifier_store.pop(state, None)

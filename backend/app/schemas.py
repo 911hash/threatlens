@@ -4,7 +4,7 @@ Pydantic schemas for request validation and API responses.
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class AnalyzeUrlRequest(BaseModel):
@@ -47,6 +47,26 @@ class AttackChainGraph(BaseModel):
     links: List[AttackChainLink]
 
 
+class SourceResult(BaseModel):
+    name: Optional[str] = None
+    status: str
+    data: Optional[Dict[str, Any]] = None
+    message: Optional[str] = None
+    cached: Optional[bool] = None
+    fetched_at: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_status_data_consistency(self):
+        has_data = self.data is not None and bool(self.data)
+        if has_data and self.status in ("no_data", "error"):
+            raise ValueError(
+                f"SourceResult invariant violation: status cannot be '{self.status}' when data is populated: {self.data}"
+            )
+        if self.status == "no_data" and has_data:
+            raise ValueError("SourceResult invariant violation: status 'no_data' requires data to be None or empty")
+        return self
+
+
 class ScanResponse(BaseModel):
     id: str
     target: str
@@ -70,6 +90,14 @@ class ScanResponse(BaseModel):
     level_changed_vs_previous: Optional[bool] = None
     previous_scan_id: Optional[str] = None
     geo_results: List[Dict[str, Any]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_sources_consistency(self):
+        if self.sources:
+            for s_name, s_val in self.sources.items():
+                if isinstance(s_val, dict) and "status" in s_val:
+                    SourceResult(**s_val)
+        return self
 
 
 class CompareResponse(BaseModel):

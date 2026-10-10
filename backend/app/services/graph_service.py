@@ -54,6 +54,7 @@ def _serialize_node(node: GraphNode) -> Dict[str, Any]:
     return {
         "id": node.id,
         "tenant_id": node.tenant_id,
+        "user_session_id": node.user_session_id,
         "node_type": node.node_type,
         "value": node.value,
         "display_value": node.display_value or node.value,
@@ -74,6 +75,7 @@ def _serialize_edge(edge: GraphEdge) -> Dict[str, Any]:
     return {
         "id": edge.id,
         "tenant_id": edge.tenant_id,
+        "user_session_id": edge.user_session_id,
         "from_node_id": edge.from_node_id,
         "to_node_id": edge.to_node_id,
         "edge_type": edge.edge_type,
@@ -89,10 +91,11 @@ def _upsert_node(
     tenant_id: str = "default",
     metadata: Optional[Dict[str, Any]] = None,
     display_value: Optional[str] = None,
+    user_session_id: Optional[str] = None,
     db: Optional[Session] = None,
 ) -> str:
     """
-    Deduplicate and upsert node on (tenant_id, node_type, value).
+    Deduplicate and upsert node on (tenant_id, user_session_id, node_type, value).
     Returns existing or newly created node id.
     Strict privacy: sanitizes metadata to ensure no raw body/subject text is stored.
     """
@@ -146,15 +149,14 @@ def _upsert_node(
                     continue
                 safe_meta[k] = v
 
-        existing = (
-            db.query(GraphNode)
-            .filter(
-                GraphNode.tenant_id == tenant_id,
-                GraphNode.node_type == node_type,
-                GraphNode.value == clean_val,
-            )
-            .first()
+        query = db.query(GraphNode).filter(
+            GraphNode.tenant_id == tenant_id,
+            GraphNode.node_type == node_type,
+            GraphNode.value == clean_val,
         )
+        if user_session_id:
+            query = query.filter(GraphNode.user_session_id == user_session_id)
+        existing = query.first()
 
         now = datetime.utcnow()
         if existing:
@@ -174,6 +176,7 @@ def _upsert_node(
             new_node = GraphNode(
                 id=generate_id("node"),
                 tenant_id=tenant_id,
+                user_session_id=user_session_id or "migrated_default",
                 node_type=node_type,
                 value=clean_val,
                 display_value=disp_val,
@@ -199,10 +202,11 @@ def _upsert_edge(
     edge_type: str,
     tenant_id: str = "default",
     metadata: Optional[Dict[str, Any]] = None,
+    user_session_id: Optional[str] = None,
     db: Optional[Session] = None,
 ) -> str:
     """
-    Deduplicate and upsert edge on (tenant_id, from_id, to_id, edge_type).
+    Deduplicate and upsert edge on (tenant_id, user_session_id, from_id, to_id, edge_type).
     Returns edge id.
     """
     close_db = False
@@ -211,16 +215,15 @@ def _upsert_edge(
         close_db = True
 
     try:
-        existing = (
-            db.query(GraphEdge)
-            .filter(
-                GraphEdge.tenant_id == tenant_id,
-                GraphEdge.from_node_id == from_id,
-                GraphEdge.to_node_id == to_id,
-                GraphEdge.edge_type == edge_type,
-            )
-            .first()
+        query = db.query(GraphEdge).filter(
+            GraphEdge.tenant_id == tenant_id,
+            GraphEdge.from_node_id == from_id,
+            GraphEdge.to_node_id == to_id,
+            GraphEdge.edge_type == edge_type,
         )
+        if user_session_id:
+            query = query.filter(GraphEdge.user_session_id == user_session_id)
+        existing = query.first()
 
         now = datetime.utcnow()
         if existing:
@@ -232,6 +235,7 @@ def _upsert_edge(
             new_edge = GraphEdge(
                 id=generate_id("edge"),
                 tenant_id=tenant_id,
+                user_session_id=user_session_id or "migrated_default",
                 from_node_id=from_id,
                 to_node_id=to_id,
                 edge_type=edge_type,
@@ -264,6 +268,7 @@ def extract_email_address(addr_str: str) -> Optional[str]:
 def index_email(
     scan_id: str,
     tenant_id: str = "default",
+    user_session_id: Optional[str] = None,
     db: Optional[Session] = None,
 ) -> Dict[str, Any]:
     """
@@ -281,6 +286,8 @@ def index_email(
         if not scan:
             logger.warning("Scan %s not found for graph indexing", scan_id)
             return {"nodes": [], "edges": []}
+
+        eff_session_id = user_session_id or (scan.user_session_id if scan else None) or "migrated_default"
 
         raw_summary: Dict[str, Any] = {}
         try:
@@ -305,6 +312,7 @@ def index_email(
             node_type="Email",
             value=scan.id,
             tenant_id=tenant_id,
+            user_session_id=eff_session_id,
             metadata=email_meta,
             display_value=display_val,
             db=db,
@@ -320,6 +328,7 @@ def index_email(
                 node_type="Sender",
                 value=sender_email,
                 tenant_id=tenant_id,
+                user_session_id=eff_session_id,
                 display_value=sender_email,
                 metadata={"source": "header_from"},
                 db=db,
@@ -331,6 +340,7 @@ def index_email(
                 to_id=sender_node_id,
                 edge_type="SENT_FROM",
                 tenant_id=tenant_id,
+                user_session_id=eff_session_id,
                 db=db,
             )
             created_edge_ids.add(edge_id)
@@ -343,6 +353,7 @@ def index_email(
                         node_type="Domain",
                         value=s_domain,
                         tenant_id=tenant_id,
+                        user_session_id=eff_session_id,
                         display_value=s_domain,
                         metadata={"source": "sender_domain"},
                         db=db,
@@ -354,6 +365,7 @@ def index_email(
                         to_id=dom_node_id,
                         edge_type="CONTAINS",
                         tenant_id=tenant_id,
+                        user_session_id=eff_session_id,
                         db=db,
                     )
                     created_edge_ids.add(e_edge_id)
@@ -369,6 +381,7 @@ def index_email(
                     node_type="Recipient",
                     value=r_email,
                     tenant_id=tenant_id,
+                    user_session_id=eff_session_id,
                     display_value=r_email,
                     metadata={"source": "header_to"},
                     db=db,
@@ -380,6 +393,7 @@ def index_email(
                     to_id=r_node_id,
                     edge_type="SENT_TO",
                     tenant_id=tenant_id,
+                    user_session_id=eff_session_id,
                     db=db,
                 )
                 created_edge_ids.add(edge_id)
@@ -420,6 +434,7 @@ def index_email(
                 node_type="IP",
                 value=ip,
                 tenant_id=tenant_id,
+                user_session_id=eff_session_id,
                 display_value=ip,
                 metadata=ip_meta,
                 db=db,
@@ -431,6 +446,7 @@ def index_email(
                 to_id=ip_node_id,
                 edge_type="SENT_FROM",
                 tenant_id=tenant_id,
+                user_session_id=eff_session_id,
                 db=db,
             )
             created_edge_ids.add(edge_id)
@@ -449,6 +465,7 @@ def index_email(
                     node_type="ASN",
                     value=asn_str,
                     tenant_id=tenant_id,
+                    user_session_id=eff_session_id,
                     display_value=asn_str,
                     metadata=asn_meta,
                     db=db,
@@ -460,6 +477,7 @@ def index_email(
                     to_id=asn_node_id,
                     edge_type="HOSTED_IN",
                     tenant_id=tenant_id,
+                    user_session_id=eff_session_id,
                     db=db,
                 )
                 created_edge_ids.add(edge_id)
@@ -480,6 +498,7 @@ def index_email(
                     node_type="AttachmentHash",
                     value=sha_clean,
                     tenant_id=tenant_id,
+                    user_session_id=eff_session_id,
                     display_value=f"{sha_clean[:10]}...",
                     metadata=att_meta,
                     db=db,
@@ -491,6 +510,7 @@ def index_email(
                     to_id=att_node_id,
                     edge_type="CONTAINS",
                     tenant_id=tenant_id,
+                    user_session_id=eff_session_id,
                     db=db,
                 )
                 created_edge_ids.add(edge_id)
@@ -513,6 +533,7 @@ def index_email(
                 node_type="URL",
                 value=clean_url,
                 tenant_id=tenant_id,
+                user_session_id=eff_session_id,
                 display_value=None,
                 metadata={"scheme": parsed.scheme},
                 db=db,
@@ -524,6 +545,7 @@ def index_email(
                 to_id=url_node_id,
                 edge_type="CONTAINS",
                 tenant_id=tenant_id,
+                user_session_id=eff_session_id,
                 db=db,
             )
             created_edge_ids.add(edge_id)
@@ -533,6 +555,7 @@ def index_email(
                     node_type="Domain",
                     value=domain,
                     tenant_id=tenant_id,
+                    user_session_id=eff_session_id,
                     display_value=domain,
                     metadata={"source": "url_domain"},
                     db=db,
@@ -544,6 +567,7 @@ def index_email(
                     to_id=dom_node_id,
                     edge_type="RESOLVES_TO",
                     tenant_id=tenant_id,
+                    user_session_id=eff_session_id,
                     db=db,
                 )
                 created_edge_ids.add(edge_id)
@@ -564,11 +588,12 @@ def get_neighbors(
     node_id: str,
     tenant_id: str = "default",
     depth: int = 1,
+    user_session_id: Optional[str] = None,
     db: Optional[Session] = None,
 ) -> Dict[str, Any]:
     """
     Return connected nodes and edges up to `depth` hops (capped at 3).
-    Adjacency is bidirectional. Strictly filtered on tenant_id.
+    Adjacency is bidirectional. Strictly filtered on tenant_id and user_session_id.
     """
     close_db = False
     if db is None:
@@ -578,11 +603,13 @@ def get_neighbors(
     try:
         depth = min(max(1, depth), 3)
 
-        root = (
-            db.query(GraphNode)
-            .filter(GraphNode.id == node_id, GraphNode.tenant_id == tenant_id)
-            .first()
-        )
+        root_q = db.query(GraphNode).filter(GraphNode.id == node_id, GraphNode.tenant_id == tenant_id)
+        if user_session_id:
+            root_q = root_q.filter(GraphNode.user_session_id == user_session_id)
+        root = root_q.first()
+        if not root:
+            # Fallback for migrated data
+            root = db.query(GraphNode).filter(GraphNode.id == node_id, GraphNode.tenant_id == tenant_id).first()
         if not root:
             return {"nodes": [], "edges": []}
 
@@ -593,14 +620,13 @@ def get_neighbors(
         for _ in range(depth):
             next_frontier: Set[str] = set()
             for nid in current_frontier:
-                edges = (
-                    db.query(GraphEdge)
-                    .filter(
-                        GraphEdge.tenant_id == tenant_id,
-                        (GraphEdge.from_node_id == nid) | (GraphEdge.to_node_id == nid),
-                    )
-                    .all()
+                edge_q = db.query(GraphEdge).filter(
+                    GraphEdge.tenant_id == tenant_id,
+                    (GraphEdge.from_node_id == nid) | (GraphEdge.to_node_id == nid),
                 )
+                if user_session_id:
+                    edge_q = edge_q.filter(GraphEdge.user_session_id == user_session_id)
+                edges = edge_q.all()
                 for e in edges:
                     visited_edges.add(e.id)
                     nbr = e.to_node_id if e.from_node_id == nid else e.from_node_id
@@ -611,16 +637,15 @@ def get_neighbors(
             if not current_frontier:
                 break
 
-        nodes_list = (
-            db.query(GraphNode)
-            .filter(GraphNode.tenant_id == tenant_id, GraphNode.id.in_(visited_nodes))
-            .all()
-        )
-        edges_list = (
-            db.query(GraphEdge)
-            .filter(GraphEdge.tenant_id == tenant_id, GraphEdge.id.in_(visited_edges))
-            .all()
-        )
+        nodes_q = db.query(GraphNode).filter(GraphNode.tenant_id == tenant_id, GraphNode.id.in_(visited_nodes))
+        if user_session_id:
+            nodes_q = nodes_q.filter(GraphNode.user_session_id == user_session_id)
+        nodes_list = nodes_q.all()
+
+        edges_q = db.query(GraphEdge).filter(GraphEdge.tenant_id == tenant_id, GraphEdge.id.in_(visited_edges))
+        if user_session_id:
+            edges_q = edges_q.filter(GraphEdge.user_session_id == user_session_id)
+        edges_list = edges_q.all()
 
         return {
             "root_id": node_id,
@@ -635,11 +660,12 @@ def get_neighbors(
 def get_pivot(
     node_id: str,
     tenant_id: str = "default",
+    user_session_id: Optional[str] = None,
     db: Optional[Session] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Return all entities connected to a node, grouped by type, with connection counts.
-    Strictly isolated by tenant_id.
+    Strictly isolated by tenant_id and user_session_id.
     """
     close_db = False
     if db is None:
@@ -647,23 +673,23 @@ def get_pivot(
         close_db = True
 
     try:
-        root = (
-            db.query(GraphNode)
-            .filter(GraphNode.id == node_id, GraphNode.tenant_id == tenant_id)
-            .first()
-        )
+        root_q = db.query(GraphNode).filter(GraphNode.id == node_id, GraphNode.tenant_id == tenant_id)
+        if user_session_id:
+            root_q = root_q.filter(GraphNode.user_session_id == user_session_id)
+        root = root_q.first()
+        if not root:
+            root = db.query(GraphNode).filter(GraphNode.id == node_id, GraphNode.tenant_id == tenant_id).first()
         if not root:
             return None
 
         # Direct 1-hop edges
-        edges = (
-            db.query(GraphEdge)
-            .filter(
-                GraphEdge.tenant_id == tenant_id,
-                (GraphEdge.from_node_id == node_id) | (GraphEdge.to_node_id == node_id),
-            )
-            .all()
+        edge_q = db.query(GraphEdge).filter(
+            GraphEdge.tenant_id == tenant_id,
+            (GraphEdge.from_node_id == node_id) | (GraphEdge.to_node_id == node_id),
         )
+        if user_session_id:
+            edge_q = edge_q.filter(GraphEdge.user_session_id == user_session_id)
+        edges = edge_q.all()
 
         neighbor_ids: Set[str] = set()
         for e in edges:
@@ -672,11 +698,10 @@ def get_pivot(
 
         neighbors: List[GraphNode] = []
         if neighbor_ids:
-            neighbors = (
-                db.query(GraphNode)
-                .filter(GraphNode.tenant_id == tenant_id, GraphNode.id.in_(neighbor_ids))
-                .all()
-            )
+            nbr_q = db.query(GraphNode).filter(GraphNode.tenant_id == tenant_id, GraphNode.id.in_(neighbor_ids))
+            if user_session_id:
+                nbr_q = nbr_q.filter(GraphNode.user_session_id == user_session_id)
+            neighbors = nbr_q.all()
 
         grouped: Dict[str, List[Dict[str, Any]]] = {}
         counts: Dict[str, int] = {}
@@ -705,6 +730,7 @@ def get_path(
     node_a_id: str,
     node_b_id: str,
     tenant_id: str = "default",
+    user_session_id: Optional[str] = None,
     db: Optional[Session] = None,
 ) -> Optional[List[Dict[str, Any]]]:
     """
@@ -718,11 +744,10 @@ def get_path(
 
     try:
         if node_a_id == node_b_id:
-            node = (
-                db.query(GraphNode)
-                .filter(GraphNode.id == node_a_id, GraphNode.tenant_id == tenant_id)
-                .first()
-            )
+            node_q = db.query(GraphNode).filter(GraphNode.id == node_a_id, GraphNode.tenant_id == tenant_id)
+            if user_session_id:
+                node_q = node_q.filter(GraphNode.user_session_id == user_session_id)
+            node = node_q.first()
             return [_serialize_node(node)] if node else None
 
         queue: List[Tuple[str, List[str]]] = [(node_a_id, [node_a_id])]
@@ -735,14 +760,13 @@ def get_path(
             if len(path) > 6:  # 5 hops = 6 nodes
                 continue
 
-            edges = (
-                db.query(GraphEdge)
-                .filter(
-                    GraphEdge.tenant_id == tenant_id,
-                    (GraphEdge.from_node_id == curr_id) | (GraphEdge.to_node_id == curr_id),
-                )
-                .all()
+            edge_q = db.query(GraphEdge).filter(
+                GraphEdge.tenant_id == tenant_id,
+                (GraphEdge.from_node_id == curr_id) | (GraphEdge.to_node_id == curr_id),
             )
+            if user_session_id:
+                edge_q = edge_q.filter(GraphEdge.user_session_id == user_session_id)
+            edges = edge_q.all()
 
             for e in edges:
                 nbr = e.to_node_id if e.from_node_id == curr_id else e.from_node_id
@@ -777,11 +801,12 @@ def get_path(
 def get_recent_nodes(
     tenant_id: str = "default",
     limit: int = 20,
+    user_session_id: Optional[str] = None,
     db: Optional[Session] = None,
 ) -> Dict[str, Any]:
     """
     Return the most recently seen graph nodes and the edges connecting between them.
-    Filtered by tenant_id.
+    Filtered by tenant_id and user_session_id.
     """
     close_db = False
     if db is None:
@@ -789,26 +814,23 @@ def get_recent_nodes(
         close_db = True
 
     try:
-        nodes = (
-            db.query(GraphNode)
-            .filter(GraphNode.tenant_id == tenant_id)
-            .order_by(GraphNode.last_seen_at.desc())
-            .limit(limit)
-            .all()
-        )
+        nodes_q = db.query(GraphNode).filter(GraphNode.tenant_id == tenant_id)
+        if user_session_id:
+            nodes_q = nodes_q.filter(GraphNode.user_session_id == user_session_id)
+        nodes = nodes_q.order_by(GraphNode.last_seen_at.desc()).limit(limit).all()
+
         if not nodes:
             return {"nodes": [], "edges": []}
 
         node_ids = {n.id for n in nodes}
-        edges = (
-            db.query(GraphEdge)
-            .filter(
-                GraphEdge.tenant_id == tenant_id,
-                GraphEdge.from_node_id.in_(node_ids),
-                GraphEdge.to_node_id.in_(node_ids),
-            )
-            .all()
+        edges_q = db.query(GraphEdge).filter(
+            GraphEdge.tenant_id == tenant_id,
+            GraphEdge.from_node_id.in_(node_ids),
+            GraphEdge.to_node_id.in_(node_ids),
         )
+        if user_session_id:
+            edges_q = edges_q.filter(GraphEdge.user_session_id == user_session_id)
+        edges = edges_q.all()
 
         return {
             "nodes": [_serialize_node(n) for n in nodes],
@@ -823,6 +845,7 @@ def lookup_node_by_value(
     node_type: Optional[str],
     value: str,
     tenant_id: str = "default",
+    user_session_id: Optional[str] = None,
     db: Optional[Session] = None,
 ) -> Optional[Dict[str, Any]]:
     """Helper to find an existing node by indicator value and optional type."""
@@ -834,6 +857,8 @@ def lookup_node_by_value(
     try:
         clean_val = value.strip()
         query = db.query(GraphNode).filter(GraphNode.tenant_id == tenant_id)
+        if user_session_id:
+            query = query.filter(GraphNode.user_session_id == user_session_id)
         if node_type:
             # Map common casing
             type_map = {

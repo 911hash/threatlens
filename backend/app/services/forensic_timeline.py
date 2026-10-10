@@ -89,6 +89,7 @@ def build_timeline(
     tenant_id: str = "default",
     db: Optional[Session] = None,
     force_rebuild: bool = False,
+    user_session_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Constructs or retrieves cached chronological forensic timeline for a scan.
@@ -102,19 +103,23 @@ def build_timeline(
     try:
         # Check cache if not force rebuild
         if not force_rebuild:
-            cached = (
+            cached_query = (
                 db.query(ForensicEvent)
                 .filter(
                     ForensicEvent.scan_id == scan_id,
                     ForensicEvent.tenant_id == tenant_id,
                 )
-                .order_by(ForensicEvent.event_timestamp.asc())
-                .all()
             )
+            if user_session_id is not None:
+                cached_query = cached_query.filter(ForensicEvent.user_session_id == user_session_id)
+            cached = cached_query.order_by(ForensicEvent.event_timestamp.asc()).all()
             if cached:
                 return [_serialize_event(e) for e in cached]
 
-        scan = db.query(Scan).filter(Scan.id == scan_id).first()
+        scan_q = db.query(Scan).filter(Scan.id == scan_id)
+        if user_session_id is not None:
+            scan_q = scan_q.filter(Scan.user_session_id == user_session_id)
+        scan = scan_q.first()
         if not scan:
             return []
 
@@ -256,16 +261,20 @@ def build_timeline(
 
         # Cache in forensic_events table
         if force_rebuild:
-            db.query(ForensicEvent).filter(
+            del_q = db.query(ForensicEvent).filter(
                 ForensicEvent.scan_id == scan_id,
                 ForensicEvent.tenant_id == tenant_id,
-            ).delete()
+            )
+            if user_session_id is not None:
+                del_q = del_q.filter(ForensicEvent.user_session_id == user_session_id)
+            del_q.delete()
 
         persisted_events: List[ForensicEvent] = []
         for ev in events:
             row = ForensicEvent(
                 id=generate_id("fevt"),
                 tenant_id=tenant_id,
+                user_session_id=user_session_id,
                 scan_id=scan_id,
                 event_timestamp=ev["event_timestamp"],
                 category=ev["category"],

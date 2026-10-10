@@ -59,7 +59,7 @@ def mock_llm_reasoning():
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(app, headers={"X-Session-ID": "default_user"})
 
 
 @pytest.fixture
@@ -475,7 +475,7 @@ def test_disconnect_revokes_token_and_deletes_account(client, db_session):
 
 def test_sync_rate_limit_30_seconds(client, db_session):
     """POST /api/inbox/sync enforces 30s rate limit."""
-    active_account = db_session.query(GmailAccount).filter(GmailAccount.is_active == True).first()
+    active_account = db_session.query(GmailAccount).filter(GmailAccount.user_session_id == "default_user", GmailAccount.is_active == True).first()
     created = False
     old_sync = None
     if active_account:

@@ -279,8 +279,13 @@ async def sync_inbox(
     new_count = 0
 
     for gmail_id, raw_bytes in messages_data:
-        # 1. Skip if gmail_id already stored
-        existing_inbox = db.query(InboxMessage).filter(InboxMessage.gmail_id == gmail_id).first()
+        session_id = account.user_session_id or "migrated_default"
+        # 1. Skip if gmail_id already stored for this session
+        existing_inbox = (
+            db.query(InboxMessage)
+            .filter(InboxMessage.gmail_id == gmail_id, InboxMessage.user_session_id == session_id)
+            .first()
+        )
         if existing_inbox:
             continue
 
@@ -289,11 +294,19 @@ async def sync_inbox(
         target_msg_id = parsed.message_id.strip() if parsed.message_id else None
 
         if target_msg_id:
-            # Skip if Message-ID already stored in inbox_messages or scans
-            existing_msg_id = db.query(InboxMessage).filter(InboxMessage.message_id == target_msg_id).first()
+            # Skip if Message-ID already stored in inbox_messages or scans for this session
+            existing_msg_id = (
+                db.query(InboxMessage)
+                .filter(InboxMessage.message_id == target_msg_id, InboxMessage.user_session_id == session_id)
+                .first()
+            )
             if existing_msg_id:
                 continue
-            existing_scan = db.query(Scan).filter(Scan.target == target_msg_id).first()
+            existing_scan = (
+                db.query(Scan)
+                .filter(Scan.target == target_msg_id, Scan.user_session_id == session_id)
+                .first()
+            )
             if existing_scan:
                 continue
 
@@ -305,11 +318,13 @@ async def sync_inbox(
                 hash_only=False,
                 db=db,
                 gmail_id=gmail_id,
+                user_session_id=session_id,
             )
 
             # 4. Persist inbox message entry
             inbox_entry = InboxMessage(
                 id=generate_id("inbox"),
+                user_session_id=session_id,
                 account_id=account.id,
                 gmail_id=gmail_id,
                 message_id=target_msg_id or scan.target,

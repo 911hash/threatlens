@@ -108,7 +108,7 @@ async def lookup_virustotal_url(url: str) -> Dict[str, Any]:
                     "name": "VirusTotal",
                     "status": "no_data",
                     "message": "Target not found in VirusTotal database.",
-                    "data": {"malicious": 0, "suspicious": 0, "harmless": 0, "undetected": 0, "total": 0},
+                    "data": None,
                     "fetched_at": datetime.utcnow().isoformat(),
                 }
             elif resp.status_code == 429:
@@ -217,7 +217,7 @@ async def lookup_virustotal_hash(file_hash: str) -> Dict[str, Any]:
                     "name": "VirusTotal",
                     "status": "no_data",
                     "message": "File hash not found in VirusTotal database.",
-                    "data": {"malicious": 0, "suspicious": 0, "harmless": 0, "undetected": 0, "total": 0},
+                    "data": None,
                     "fetched_at": datetime.utcnow().isoformat(),
                 }
             elif resp.status_code == 429:

@@ -37,7 +37,7 @@ def setup_forensics_db():
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(app, headers={"X-Session-ID": "migrated_default"})
 
 
 @pytest.fixture

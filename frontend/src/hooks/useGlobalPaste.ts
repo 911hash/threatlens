@@ -2,14 +2,18 @@ import { useEffect } from 'react';
 
 export interface PastedTarget {
   target: string;
-  type: 'url' | 'hash' | 'text';
+  type: 'url' | 'hash' | 'email' | 'text';
 }
 
-export function detectIndicatorType(text: string): 'url' | 'hash' | 'text' {
+export function detectIndicatorType(text: string): 'url' | 'hash' | 'email' | 'text' {
   const clean = text.trim();
   // Hash detection (MD5 32 hex, SHA1 40 hex, SHA256 64 hex)
   if (/^[a-fA-F0-9]{32}$/.test(clean) || /^[a-fA-F0-9]{40}$/.test(clean) || /^[a-fA-F0-9]{64}$/.test(clean)) {
     return 'hash';
+  }
+  // Email detection
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean) || clean.startsWith('mailto:')) {
+    return 'email';
   }
   // URL detection (http, https, hxxp, domain pattern)
   if (
@@ -47,8 +51,8 @@ export function useGlobalPaste(onPaste: (data: PastedTarget) => void, enabled: b
       const trimmed = text.trim();
       const detectedType = detectIndicatorType(trimmed);
 
-      // Only trigger if recognized as url or hash or looks like an indicator
-      if (detectedType === 'url' || detectedType === 'hash') {
+      // Only trigger if recognized as url or hash or email
+      if (detectedType === 'url' || detectedType === 'hash' || detectedType === 'email') {
         e.preventDefault();
         onPaste({
           target: trimmed,

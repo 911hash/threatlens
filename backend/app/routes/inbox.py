@@ -1,13 +1,14 @@
 """
 Inbox routes: paginated listing of synced Gmail emails, manual sync triggers with rate limiting,
 and full scan forensic detail retrieval.
+Per-browser multi-user session isolation via session cookies.
 """
 
 from datetime import datetime, timedelta
 import json
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,7 @@ from ..database import get_db
 from ..models import GmailAccount, InboxMessage, Scan
 from ..routes.analyze import serialize_scan_response
 from ..services.gmail_sync import sync_inbox
+from ..session import get_or_create_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -43,16 +45,20 @@ class SyncResponse(BaseModel):
 
 @router.get("", response_model=List[InboxItemResponse])
 def get_inbox_messages(
+    request: Request,
+    response: Response,
     page: int = Query(1, ge=1),
     limit: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
     """
-    Get paginated list of synced inbox messages with risk assessment badges.
+    Get paginated list of synced inbox messages for current browser session.
     """
+    session_id = get_or_create_session_id(request, response)
     offset = (page - 1) * limit
     inbox_items = (
         db.query(InboxMessage)
+        .filter(InboxMessage.user_session_id == session_id)
         .order_by(InboxMessage.created_at.desc())
         .offset(offset)
         .limit(limit)
@@ -61,7 +67,10 @@ def get_inbox_messages(
 
     results: List[InboxItemResponse] = []
     for item in inbox_items:
-        scan = db.query(Scan).filter(Scan.id == item.scan_id).first()
+        scan = db.query(Scan).filter(Scan.id == item.scan_id, Scan.user_session_id == session_id).first()
+        if not scan:
+            # Fallback if scan has migrated_default or matching ID
+            scan = db.query(Scan).filter(Scan.id == item.scan_id).first()
         risk_score = scan.risk_score if scan else 0
         risk_level = scan.risk_level if scan else "UNKNOWN"
         has_geo = False
@@ -99,14 +108,19 @@ def get_inbox_messages(
 
 
 @router.post("/sync", response_model=SyncResponse)
-async def trigger_inbox_sync(db: Session = Depends(get_db)):
+async def trigger_inbox_sync(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     """
-    Trigger manual inbox synchronization for active connected Gmail account.
+    Trigger manual inbox synchronization for active connected Gmail account in current browser session.
     Enforces a strict 30-second rate limit per account.
     """
+    session_id = get_or_create_session_id(request, response)
     account = (
         db.query(GmailAccount)
-        .filter(GmailAccount.user_session_id == "default_user", GmailAccount.is_active == True)
+        .filter(GmailAccount.user_session_id == session_id, GmailAccount.is_active == True)
         .first()
     )
 
@@ -147,18 +161,35 @@ async def trigger_inbox_sync(db: Session = Depends(get_db)):
 
 
 @router.get("/{gmail_id}")
-def get_inbox_message_detail(gmail_id: str, db: Session = Depends(get_db)):
+def get_inbox_message_detail(
+    gmail_id: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     """
-    Get full forensic scan detail for a specific Gmail inbox email.
+    Get full forensic scan detail for a specific Gmail inbox email belonging to the current session.
     """
-    inbox_item = db.query(InboxMessage).filter(InboxMessage.gmail_id == gmail_id).first()
+    session_id = get_or_create_session_id(request, response)
+    inbox_item = (
+        db.query(InboxMessage)
+        .filter(InboxMessage.gmail_id == gmail_id, InboxMessage.user_session_id == session_id)
+        .first()
+    )
     if not inbox_item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "MESSAGE_NOT_FOUND", "message": f"Inbox message with Gmail ID '{gmail_id}' not found."},
         )
 
-    scan = db.query(Scan).filter(Scan.id == inbox_item.scan_id).first()
+    scan = (
+        db.query(Scan)
+        .filter(Scan.id == inbox_item.scan_id, Scan.user_session_id == session_id)
+        .first()
+    )
+    if not scan:
+        scan = db.query(Scan).filter(Scan.id == inbox_item.scan_id).first()
+
     if not scan:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
